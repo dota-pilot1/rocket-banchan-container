@@ -1,0 +1,21 @@
+export const nav = {
+  dashboard: "仪表板",
+  admin: "设置管理",
+  questionMgmt: "题目管理",
+  users: "用户管理",
+  roleManagement: "角色管理",
+  rolePermissions: "角色与权限",
+  questionBank: "题库",
+  siteSettings: "店铺设置",
+  menuManagement: "页头菜单管理",
+  profile: "我的资料",
+  logout: "退出登录",
+  login: "登录",
+  register: "注册",
+  roles: {
+    ROLE_ADMIN: "管理员",
+    ROLE_MANAGER: "经理",
+    ROLE_STYLIST: "造型师",
+    ROLE_CUSTOMER: "顾客",
+  },
+};
