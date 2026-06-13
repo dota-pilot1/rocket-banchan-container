@@ -36,6 +36,13 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, fields));
     }
 
+    @ExceptionHandler({IllegalStateException.class, IllegalArgumentException.class})
+    public ResponseEntity<ErrorResponse> handleDomainRule(RuntimeException e) {
+        return ResponseEntity
+                .status(ErrorCode.VALIDATION_FAILED.getStatus())
+                .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, e.getMessage()));
+    }
+
     @ExceptionHandler(AuthorizationDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAccessDenied(AuthorizationDeniedException e) {
         return ResponseEntity

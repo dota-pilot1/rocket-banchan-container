@@ -41,6 +41,11 @@ public enum ErrorCode {
     MENU_NOT_FOUND(HttpStatus.NOT_FOUND, "MENU_001", "메뉴를 찾을 수 없습니다."),
     MENU_CODE_DUPLICATE(HttpStatus.CONFLICT, "MENU_002", "이미 존재하는 메뉴 코드입니다."),
     MENU_PARENT_NOT_FOUND(HttpStatus.NOT_FOUND, "MENU_003", "부모 메뉴를 찾을 수 없습니다."),
+    EXAM_NOT_FOUND(HttpStatus.NOT_FOUND, "EXAM_001", "시험지를 찾을 수 없습니다."),
+    EXAM_NOT_PUBLISHED(HttpStatus.BAD_REQUEST, "EXAM_002", "발행되지 않은 시험은 응시할 수 없습니다."),
+    ATTEMPT_NOT_FOUND(HttpStatus.NOT_FOUND, "ATMP_001", "응시 기록을 찾을 수 없습니다."),
+    ATTEMPT_NOT_OWNER(HttpStatus.FORBIDDEN, "ATMP_002", "본인의 응시 기록만 접근할 수 있습니다."),
+    ATTEMPT_ALREADY_SUBMITTED(HttpStatus.CONFLICT, "ATMP_003", "이미 제출된 응시입니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON_999", "서버 오류가 발생했습니다.");
 
     private final HttpStatus status;

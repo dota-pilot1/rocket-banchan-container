@@ -23,6 +23,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { SearchInput } from "@/shared/ui/SearchInput";
 import { SelectField } from "@/shared/ui/SelectField";
 import {
   buildCategoryTree,
@@ -576,15 +577,11 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                     options={difficulties.map((difficulty) => ({ value: difficulty.value, label: difficulty.label }))}
                     placeholder="전체 난이도"
                   />
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <SmallInput
-                      value={filters.keyword ?? ""}
-                      onChange={(value) => setFilters((cur) => ({ ...cur, keyword: value }))}
-                      placeholder="문제/해설 검색"
-                      className="pl-9"
-                    />
-                  </div>
+                  <SearchInput
+                    value={filters.keyword ?? ""}
+                    onChange={(value) => setFilters((cur) => ({ ...cur, keyword: value }))}
+                    placeholder="문제/해설 검색"
+                  />
                   <button
                     type="button"
                     onClick={() => setFilters({})}
@@ -1165,27 +1162,6 @@ function TextArea({
         className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring"
       />
     </label>
-  );
-}
-
-function SmallInput({
-  value,
-  onChange,
-  placeholder,
-  className = "",
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  className?: string;
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className={`h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring ${className}`}
-    />
   );
 }
 

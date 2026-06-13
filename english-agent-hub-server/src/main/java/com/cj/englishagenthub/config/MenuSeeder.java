@@ -40,9 +40,12 @@ public class MenuSeeder implements ApplicationRunner {
 
         List<MenuDef> defs = List.of(
                 new MenuDef("DASHBOARD",             null,       "대시보드",      "nav.dashboard",        "/dashboard",        "LayoutDashboard", null,                    0),
-                new MenuDef("QUESTION",              null,       "문제 관리",     "nav.questionMgmt",     null,                "BookOpenCheck",   RoleSeeder.ROLE_ADMIN,   1),
+                new MenuDef("LEARNING",              null,       "학습하기",      "nav.learning",         null,                "GraduationCap",   null,                    1),
+                new MenuDef("PRACTICE",              "LEARNING", "문제 풀기",     "nav.practice",         "/practice",         "PlayCircle",      null,                    0),
+                new MenuDef("QUESTION",              null,       "문제 관리",     "nav.questionMgmt",     null,                "BookOpenCheck",   RoleSeeder.ROLE_ADMIN,   2),
                 new MenuDef("QUESTION_BANK",         "QUESTION", "문제 은행",     "nav.questionBank",     "/question-bank",    "BookOpenCheck",   RoleSeeder.ROLE_ADMIN,   0),
-                new MenuDef("ADMIN",                 null,       "설정 관리",     "nav.admin",            null,                "Settings",        RoleSeeder.ROLE_ADMIN,   2),
+                new MenuDef("EXAM_MANAGE",           "QUESTION", "시험 출제",     "nav.examManage",       "/exams",            "ClipboardList",   RoleSeeder.ROLE_ADMIN,   1),
+                new MenuDef("ADMIN",                 null,       "설정 관리",     "nav.admin",            null,                "Settings",        RoleSeeder.ROLE_ADMIN,   3),
                 new MenuDef("ADMIN_USERS",           "ADMIN",    "유저 관리",     "nav.users",            "/users",            "Users",           RoleSeeder.ROLE_ADMIN,   0),
                 new MenuDef("ADMIN_ROLE_PERMISSIONS","ADMIN",    "역할-권한 매핑","nav.rolePermissions",  "/role-permissions", "ShieldCheck",     RoleSeeder.ROLE_ADMIN,   1),
                 new MenuDef("ADMIN_SITE_SETTINGS",   "ADMIN",    "메인 관리",     "nav.siteSettings",     "/site-settings",    "LayoutDashboard", RoleSeeder.ROLE_ADMIN,   2),
