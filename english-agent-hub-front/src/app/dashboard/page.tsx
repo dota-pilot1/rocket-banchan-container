@@ -10,6 +10,7 @@ import { characterApi, type CharacterResponse } from "@/entities/character/api/c
 import { CharacterFormDialog } from "@/widgets/characters/CharacterFormDialog";
 import { useAuth } from "@/entities/user/model/authStore";
 import { toast, toastError } from "@/shared/lib/toast";
+import { useConfirm } from "@/shared/ui/useConfirm";
 
 const ADMIN_ROLE = "ROLE_ADMIN";
 const BUILTIN_IDS = new Set(["debate", "roleplay", "quiz"]);
@@ -25,6 +26,7 @@ export default function DashboardPage() {
 function DashboardInner() {
   const { user } = useAuth();
   const isAdmin = user?.role.code === ADMIN_ROLE;
+  const { confirm, confirmDialog } = useConfirm();
 
   const [agents, setAgents] = useState<LearningAgent[]>([]);
   const [characters, setCharacters] = useState<CharacterResponse[]>([]);
@@ -58,7 +60,12 @@ function DashboardInner() {
   const characterMap = new Map(characters.map((c) => [c.id, c]));
 
   const handleDelete = async (target: CharacterResponse) => {
-    if (!confirm(`'${target.title}' 캐릭터를 삭제할까요?`)) return;
+    if (!(await confirm({
+      title: "캐릭터 삭제",
+      description: `'${target.title}' 캐릭터를 삭제할까요?`,
+      confirmText: "삭제",
+      variant: "destructive",
+    }))) return;
     try {
       await characterApi.delete(target.id);
       setCharacters((cur) => cur.filter((c) => c.id !== target.id));
@@ -207,6 +214,7 @@ function DashboardInner() {
         onClose={() => setFormOpen(false)}
         onSaved={handleSaved}
       />
+      {confirmDialog}
     </main>
   );
 }

@@ -50,14 +50,34 @@ function ExamTaker() {
       toast.success("제출 완료! 채점 결과를 확인하세요.");
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    onError: (e) => toastError(e, "제출에 실패했습니다."),
+    onError: async (e, t) => {
+      try {
+        const existingResult = await attemptApi.result(t.attemptId);
+        setResult(existingResult);
+        toast.info("이미 제출된 응시 결과를 불러왔습니다.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } catch {
+        toastError(e, "제출에 실패했습니다.");
+      }
+    },
   });
 
   if (!examId) return <CenterNote text="시험 ID가 없습니다." />;
   if (isLoading) return <CenterNote spinner text="응시를 준비하는 중" />;
   if (isError || !take) return <CenterNote text="응시할 수 없습니다. 발행된 시험인지 확인하세요." />;
 
-  if (result) return <ResultView result={result} onBack={() => router.push("/exams")} />;
+  if (result) {
+    return (
+      <ResultView
+        result={result}
+        onBack={() => router.push("/practice")}
+        onRetake={() => {
+          setResult(null);
+          setAnswers({});
+        }}
+      />
+    );
+  }
 
   const answeredCount = take.items.filter((it) => (answers[it.questionId] ?? "").trim() !== "").length;
 
@@ -151,7 +171,15 @@ function ExamTaker() {
   );
 }
 
-function ResultView({ result, onBack }: { result: AttemptResultResponse; onBack: () => void }) {
+function ResultView({
+  result,
+  onBack,
+  onRetake,
+}: {
+  result: AttemptResultResponse;
+  onBack: () => void;
+  onRetake: () => void;
+}) {
   const pct = result.maxScore > 0 ? Math.round((result.totalScore / result.maxScore) * 100) : 0;
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
@@ -214,14 +242,23 @@ function ResultView({ result, onBack }: { result: AttemptResultResponse; onBack:
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-4 text-sm font-semibold hover:bg-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          시험 목록으로
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-4 text-sm font-semibold hover:bg-accent"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            문제 풀기 목록으로
+          </button>
+          <button
+            type="button"
+            onClick={onRetake}
+            className="inline-flex h-10 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90"
+          >
+            다시 보기
+          </button>
+        </div>
       </div>
     </main>
   );

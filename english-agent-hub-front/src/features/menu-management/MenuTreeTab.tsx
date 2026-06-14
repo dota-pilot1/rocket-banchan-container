@@ -18,6 +18,7 @@ import { menuApi, type UpdateMenuBody } from "@/entities/menu/api/menuApi";
 import type { MenuRecord, MenuItem } from "@/entities/menu/model/types";
 import { toast, toastError } from "@/shared/lib/toast";
 import { Switch } from "@/shared/ui/Switch";
+import { useConfirm } from "@/shared/ui/useConfirm";
 import { MenuFormDialog } from "./MenuFormDialog";
 
 function buildTree(flat: MenuRecord[]): MenuItem[] {
@@ -79,6 +80,7 @@ function DetailPanel({
   onDeleted: () => void;
 }) {
   const qc = useQueryClient();
+  const { confirm, confirmDialog } = useConfirm();
   const [form, setForm] = useState<UpdateMenuBody>(toUpdateBody(menu));
 
   const set = <K extends keyof UpdateMenuBody>(k: K, v: UpdateMenuBody[K]) =>
@@ -104,8 +106,13 @@ function DetailPanel({
     onError: (e) => toastError(e, "삭제에 실패했습니다."),
   });
 
-  const handleDelete = () => {
-    if (!confirm(`"${menu.label}" 메뉴를 삭제하시겠습니까?\n하위 메뉴가 있으면 삭제할 수 없습니다.`)) return;
+  const handleDelete = async () => {
+    if (!(await confirm({
+      title: "메뉴 삭제",
+      description: `"${menu.label}" 메뉴를 삭제하시겠습니까?\n하위 메뉴가 있으면 삭제할 수 없습니다.`,
+      confirmText: "삭제",
+      variant: "destructive",
+    }))) return;
     deleteMutation.mutate();
   };
 
@@ -229,6 +236,7 @@ function DetailPanel({
         />
         </div>
       </div>
+      {confirmDialog}
     </div>
   );
 }

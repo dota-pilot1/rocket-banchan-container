@@ -34,7 +34,8 @@ public class QuestionSeeder implements ApplicationRunner {
             List<String> choices,
             String answer,
             String explanation,
-            List<String> keywords
+            List<String> keywords,
+            List<String> previousQuestions
     ) {
     }
 
@@ -45,79 +46,91 @@ public class QuestionSeeder implements ApplicationRunner {
 
         List<QuestionDef> seeds = List.of(
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.easy,
-                        "23 + 48 = ?", null, "71", "23과 48을 더하면 71입니다.",
+                        "23 + 48 = ?", choices("71", "61", "70", "81"), "71", "23과 48을 더하면 71입니다.",
                         List.of("초등 산수", "덧셈", "받아올림")),
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.easy,
-                        "16 + 9 = ?", null, "25", "일의 자리 6+9=15에서 1을 받아올림하면 25입니다.",
+                        "16 + 9 = ?", choices("25", "24", "26", "35"), "25", "일의 자리 6+9=15에서 1을 받아올림하면 25입니다.",
                         List.of("초등 산수", "덧셈", "받아올림")),
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.easy,
-                        "37 + 25 = ?", null, "62", "7+5=12에서 1을 받아올림하고 3+2+1=6이므로 62입니다.",
+                        "37 + 25 = ?", choices("62", "52", "61", "72"), "62", "7+5=12에서 1을 받아올림하고 3+2+1=6이므로 62입니다.",
                         List.of("초등 산수", "덧셈", "받아올림")),
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.easy,
-                        "128 + 64 = ?", null, "192", "128과 64를 더하면 192입니다. 100+64=164에 28을 더해도 됩니다.",
+                        "128 + 64 = ?", choices("192", "182", "196", "202"), "192", "128과 64를 더하면 192입니다. 100+64=164에 28을 더해도 됩니다.",
                         List.of("초등 산수", "덧셈", "세자리 수")),
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.medium,
-                        "256 + 387 = ?", null, "643", "일의 자리부터 더하면 6+7=13, 5+8+1=14, 2+3+1=6 이므로 643입니다.",
+                        "256 + 387 = ?", choices("643", "633", "653", "743"), "643", "일의 자리부터 더하면 6+7=13, 5+8+1=14, 2+3+1=6 이므로 643입니다.",
                         List.of("초등 산수", "덧셈", "세자리 수")),
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.medium,
-                        "1024 + 512 = ?", null, "1536", "1024와 512를 더하면 1536입니다.",
+                        "1024 + 512 = ?", choices("1536", "1436", "1546", "1512"), "1536", "1024와 512를 더하면 1536입니다.",
                         List.of("초등 산수", "덧셈", "네자리 수")),
                 q(List.of("수학", "산수", "뺄셈"), QuestionDifficulty.easy,
-                        "95 - 37 = ?", null, "58", "95에서 37을 빼면 58입니다.",
+                        "95 - 37 = ?", choices("58", "48", "57", "68"), "58", "95에서 37을 빼면 58입니다.",
                         List.of("초등 산수", "뺄셈", "받아내림")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.easy,
-                        "12 x 7 = ?", null, "84", "12를 7번 더하면 84입니다.",
+                        "12 x 7 = ?", choices("84", "74", "82", "94"), "84", "12를 7번 더하면 84입니다.",
                         List.of("초등 산수", "곱셈", "구구단")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.easy,
-                        "9 x 8 = ?", null, "72", "9단 곱셈이므로 9를 8번 더하면 72입니다.",
+                        "9 x 8 = ?", choices("72", "63", "81", "70"), "72", "9단 곱셈이므로 9를 8번 더하면 72입니다.",
                         List.of("초등 산수", "곱셈", "구구단", "9단")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.easy,
-                        "7 x 6 = ?", null, "42", "7단 곱셈이므로 7을 6번 더하면 42입니다.",
+                        "7 x 6 = ?", choices("42", "36", "48", "41"), "42", "7단 곱셈이므로 7을 6번 더하면 42입니다.",
                         List.of("초등 산수", "곱셈", "구구단", "7단")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.easy,
-                        "15 x 4 = ?", null, "60", "15를 4번 더하면 60입니다. 10×4=40, 5×4=20을 더해도 됩니다.",
+                        "15 x 4 = ?", choices("60", "45", "55", "75"), "60", "15를 4번 더하면 60입니다. 10×4=40, 5×4=20을 더해도 됩니다.",
                         List.of("초등 산수", "곱셈", "두자리 수")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.easy,
-                        "24 x 3 = ?", null, "72", "24를 3번 더하면 72입니다. 20×3=60, 4×3=12를 더해도 됩니다.",
+                        "24 x 3 = ?", choices("72", "62", "68", "82"), "72", "24를 3번 더하면 72입니다. 20×3=60, 4×3=12를 더해도 됩니다.",
                         List.of("초등 산수", "곱셈", "두자리 수")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.medium,
-                        "11 x 11 = ?", null, "121", "11을 11번 더하면 121입니다. 11²=121로 외워두면 편합니다.",
+                        "11 x 11 = ?", choices("121", "111", "120", "131"), "121", "11을 11번 더하면 121입니다. 11²=121로 외워두면 편합니다.",
                         List.of("초등 산수", "곱셈", "제곱")),
                 q(List.of("수학", "산수", "곱셈"), QuestionDifficulty.medium,
-                        "25 x 8 = ?", null, "200", "25를 8번 더하면 200입니다. 25×4=100이므로 25×8=200으로 계산할 수 있습니다.",
+                        "25 x 8 = ?", choices("200", "180", "190", "250"), "200", "25를 8번 더하면 200입니다. 25×4=100이므로 25×8=200으로 계산할 수 있습니다.",
                         List.of("초등 산수", "곱셈", "큰 수")),
                 q(List.of("수학", "산수", "나눗셈"), QuestionDifficulty.easy,
-                        "72 ÷ 8 = ?", null, "9", "8 x 9 = 72이므로 몫은 9입니다.",
+                        "72 ÷ 8 = ?", choices("9", "8", "7", "6"), "9", "8 x 9 = 72이므로 몫은 9입니다.",
                         List.of("초등 산수", "나눗셈", "몫")),
                 q(List.of("수학", "산수", "분수"), QuestionDifficulty.medium,
-                        "1/2 + 1/3 = ?", null, "5/6", "공통분모 6으로 바꾸면 3/6 + 2/6 = 5/6입니다.",
+                        "1/2 + 1/3 = ?", choices("5/6", "2/5", "1/5", "3/6"), "5/6", "공통분모 6으로 바꾸면 3/6 + 2/6 = 5/6입니다.",
                         List.of("초등 산수", "분수", "통분")),
                 q(List.of("수학", "산수", "소수"), QuestionDifficulty.medium,
-                        "3.5 + 2.75 = ?", null, "6.25", "소수점을 맞춰 더하면 6.25입니다.",
+                        "3.5 + 2.75 = ?", choices("6.25", "5.25", "6.15", "6.75"), "6.25", "소수점을 맞춰 더하면 6.25입니다.",
                         List.of("초등 산수", "소수", "소수 덧셈")),
 
-                q(List.of("수학", "이차방정식", "인수분해"), QuestionDifficulty.medium,
-                        "x² - 5x + 6 = 0의 해를 구하시오.", null, "x = 2, 3",
+                qPrev(List.of("수학", "이차방정식", "인수분해"), QuestionDifficulty.medium,
+                        "x² - 5x + 6 = 0의 두 해를 모두 고르시오.",
+                        List.of("x² - 5x + 6 = 0의 해를 구하시오."),
+                        choices("x = 2, 3", "x = -2, -3", "x = 1, 6", "x = -1, -6"), "x = 2, 3",
                         "인수분해하면 (x-2)(x-3)=0이므로 해는 2와 3입니다.",
                         List.of("이차방정식", "인수분해", "근")),
-                q(List.of("수학", "이차방정식", "인수분해"), QuestionDifficulty.medium,
-                        "x² + 2x - 8 = 0의 해를 구하시오.", null, "x = 2, -4",
+                qPrev(List.of("수학", "이차방정식", "인수분해"), QuestionDifficulty.medium,
+                        "x² + 2x - 8 = 0의 두 해를 모두 고르시오.",
+                        List.of("x² + 2x - 8 = 0의 해를 구하시오."),
+                        choices("x = 2, -4", "x = -2, 4", "x = 1, -8", "x = -1, 8"), "x = 2, -4",
                         "인수분해하면 (x-2)(x+4)=0이므로 해는 2와 -4입니다.",
                         List.of("이차방정식", "인수분해", "근")),
-                q(List.of("수학", "이차방정식", "근의 공식"), QuestionDifficulty.medium,
-                        "2x² - 3x - 2 = 0의 해를 근의 공식으로 구하시오.", null, "x = 2, -1/2",
+                qPrev(List.of("수학", "이차방정식", "근의 공식"), QuestionDifficulty.medium,
+                        "2x² - 3x - 2 = 0의 두 해를 근의 공식으로 고르시오.",
+                        List.of("2x² - 3x - 2 = 0의 해를 근의 공식으로 구하시오."),
+                        choices("x = 2, -1/2", "x = -2, 1/2", "x = 1, -2", "x = 2, 1/2"), "x = 2, -1/2",
                         "근의 공식에 a=2, b=-3, c=-2를 대입하면 x=(3±5)/4입니다.",
                         List.of("이차방정식", "근의 공식", "계수")),
-                q(List.of("수학", "이차방정식", "완전제곱식"), QuestionDifficulty.medium,
-                        "x² + 6x + 9 = 0의 해를 구하시오.", null, "x = -3",
+                qPrev(List.of("수학", "이차방정식", "완전제곱식"), QuestionDifficulty.medium,
+                        "x² + 6x + 9 = 0의 중근을 고르시오.",
+                        List.of("x² + 6x + 9 = 0의 해를 구하시오."),
+                        choices("x = -3", "x = 3", "x = -6", "x = 0"), "x = -3",
                         "(x+3)²=0이므로 중근 x=-3입니다.",
                         List.of("이차방정식", "완전제곱식", "중근")),
-                q(List.of("수학", "이차방정식", "판별식"), QuestionDifficulty.hard,
-                        "x² - 4x + k = 0이 중근을 가질 때 k의 값을 구하시오.", null, "k = 4",
+                qPrev(List.of("수학", "이차방정식", "판별식"), QuestionDifficulty.hard,
+                        "x² - 4x + k = 0이 중근을 가질 때 k의 값을 고르시오.",
+                        List.of("x² - 4x + k = 0이 중근을 가질 때 k의 값을 구하시오."),
+                        choices("k = 4", "k = -4", "k = 2", "k = 16"), "k = 4",
                         "중근 조건은 판별식 b²-4ac=0입니다. 16-4k=0이므로 k=4입니다.",
                         List.of("이차방정식", "판별식", "중근")),
-                q(List.of("수학", "이차방정식", "근과 계수 관계"), QuestionDifficulty.hard,
-                        "방정식 x² - 7x + 10 = 0의 두 근의 합과 곱을 구하시오.", null, "합 7, 곱 10",
+                qPrev(List.of("수학", "이차방정식", "근과 계수 관계"), QuestionDifficulty.hard,
+                        "방정식 x² - 7x + 10 = 0의 두 근의 합과 곱을 고르시오.",
+                        List.of("방정식 x² - 7x + 10 = 0의 두 근의 합과 곱을 구하시오."),
+                        choices("합 7, 곱 10", "합 -7, 곱 10", "합 7, 곱 -10", "합 10, 곱 7"), "합 7, 곱 10",
                         "x²+bx+c=0에서 두 근의 합은 -b, 곱은 c입니다.",
                         List.of("이차방정식", "근과 계수 관계", "근의 합", "근의 곱")),
 
@@ -130,7 +143,7 @@ public class QuestionSeeder implements ApplicationRunner {
                         "신라는 당과 연합하여 백제와 고구려를 멸망시킨 뒤 삼국 통일을 추진했습니다.",
                         List.of("한국사", "삼국시대", "신라", "당", "삼국통일")),
                 q(List.of("한국사", "고려시대", "대외항쟁"), QuestionDifficulty.medium,
-                        "고려 시대 몽골 침입에 맞서 강화도로 천도한 왕은?", null, "고종",
+                        "고려 시대 몽골 침입에 맞서 강화도로 천도한 왕은?", choices("고종", "태조", "광종", "공민왕"), "고종",
                         "고려 고종 때 몽골 침입에 대응해 수도를 강화도로 옮겼습니다.",
                         List.of("한국사", "고려시대", "몽골 침입", "강화도", "고종")),
                 q(List.of("한국사", "조선시대", "임진왜란"), QuestionDifficulty.medium,
@@ -147,7 +160,7 @@ public class QuestionSeeder implements ApplicationRunner {
                         "increase는 수나 양이 늘어나다, 증가하다는 뜻입니다.",
                         List.of("영어", "중등 영어", "단어", "뜻", "increase")),
                 q(List.of("영어", "중등 영어", "문장해석"), QuestionDifficulty.easy,
-                        "He is interested in science. 해석하시오.", null, "그는 과학에 관심이 있다.",
+                        "He is interested in science. 해석하시오.", choices("그는 과학에 관심이 있다.", "그는 과학을 가르친다.", "그는 과학을 싫어한다.", "그는 과학자가 아니다."), "그는 과학에 관심이 있다.",
                         "be interested in은 '~에 관심이 있다'라는 뜻입니다.",
                         List.of("영어", "중등 영어", "문장 해석", "be interested in", "science")),
                 q(List.of("영어", "중등 영어", "문법기초"), QuestionDifficulty.medium,
@@ -165,14 +178,33 @@ public class QuestionSeeder implements ApplicationRunner {
         );
 
         int created = 0;
+        int updated = 0;
         for (QuestionDef seed : seeds) {
-            if (questionRepository.findFirstByQuestion(seed.question()).isPresent()) {
-                continue;
-            }
             Category category = ensurePath(seed.categoryPath());
             QuestionType type = (seed.choices() == null || seed.choices().isEmpty())
                     ? QuestionType.SHORT_ANSWER
                     : QuestionType.MULTIPLE_CHOICE;
+
+            Question existing = findExistingSeed(seed);
+            if (existing != null) {
+                if (!existing.getQuestion().equals(seed.question())
+                        || existing.getQuestionType() != type
+                        || !existing.getChoices().equals(seed.choices())) {
+                    existing.update(
+                            type,
+                            category,
+                            seed.difficulty(),
+                            seed.question(),
+                            seed.choices(),
+                            seed.answer(),
+                            seed.explanation(),
+                            seed.keywords(),
+                            null
+                    );
+                    updated++;
+                }
+                continue;
+            }
             questionRepository.save(Question.create(
                     type,
                     category,
@@ -187,6 +219,7 @@ public class QuestionSeeder implements ApplicationRunner {
             created++;
         }
         if (created > 0) log.info("Seeded {} questions", created);
+        if (updated > 0) log.info("Backfilled {} seeded questions to multiple-choice", updated);
     }
 
     /**
@@ -227,6 +260,40 @@ public class QuestionSeeder implements ApplicationRunner {
             String explanation,
             List<String> keywords
     ) {
-        return new QuestionDef(categoryPath, difficulty, question, choices, answer, explanation, keywords);
+        return new QuestionDef(categoryPath, difficulty, question, choices, answer, explanation, keywords, List.of());
+    }
+
+    private QuestionDef qPrev(
+            List<String> categoryPath,
+            QuestionDifficulty difficulty,
+            String question,
+            List<String> previousQuestions,
+            List<String> choices,
+            String answer,
+            String explanation,
+            List<String> keywords
+    ) {
+        return new QuestionDef(categoryPath, difficulty, question, choices, answer, explanation, keywords, previousQuestions);
+    }
+
+    private Question findExistingSeed(QuestionDef seed) {
+        Question current = questionRepository.findFirstByQuestion(seed.question()).orElse(null);
+        if (current != null) return current;
+        for (String previousQuestion : seed.previousQuestions()) {
+            Question previous = questionRepository.findFirstByQuestion(previousQuestion).orElse(null);
+            if (previous != null) return previous;
+        }
+        return null;
+    }
+
+    private List<String> choices(String answer, String... distractors) {
+        List<String> values = java.util.stream.Stream.concat(
+                java.util.stream.Stream.of(answer),
+                java.util.Arrays.stream(distractors)
+        ).toList();
+        int offset = Math.floorMod(answer.hashCode(), values.size());
+        return java.util.stream.IntStream.range(0, values.size())
+                .mapToObj(i -> values.get((i + offset) % values.size()))
+                .toList();
     }
 }

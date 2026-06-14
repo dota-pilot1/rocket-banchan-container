@@ -21,6 +21,8 @@ export type ExamResponse = {
   id: string;
   title: string;
   description: string | null;
+  subjectId: number | null;
+  subjectName: string | null;
   status: ExamStatus;
   timeLimitMinutes: number | null;
   totalPoints: number;
@@ -36,6 +38,7 @@ export type ExamUpsertRequest = {
   title: string;
   description?: string;
   timeLimitMinutes?: number | null;
+  subjectId?: number | null;
   items: { questionId: string; points: number }[];
 };
 
@@ -130,4 +133,6 @@ export const attemptApi = {
     api.get<AttemptSummaryResponse[]>("/api/attempts/me").then((r) => r.data),
   ofExam: (examId: string) =>
     api.get<AttemptSummaryResponse[]>(`/api/attempts/exam/${examId}`).then((r) => r.data),
+  delete: (attemptId: string) =>
+    api.delete<void>(`/api/attempts/${attemptId}`).then(() => undefined),
 };

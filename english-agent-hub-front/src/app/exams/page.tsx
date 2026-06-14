@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList,
   FilePlus2,
+  Layers,
   Loader2,
   Pencil,
   PlayCircle,
@@ -17,6 +18,7 @@ import {
 import { RequireRole } from "@/widgets/guards/RequireRole";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
 import { examApi, type ExamResponse, type ExamStatus } from "@/entities/exam/api/examApi";
+import { buildCategoryTree, categoryApi } from "@/entities/category/api/categoryApi";
 import { toast, toastError } from "@/shared/lib/toast";
 
 export default function ExamsPage() {
@@ -33,18 +35,58 @@ const STATUS_META: Record<ExamStatus, { label: string; tone: string }> = {
   CLOSED: { label: "마감", tone: "border-slate-200 bg-slate-100 text-slate-600" },
 };
 
-type CreateState = { title: string; description: string; timeLimit: string };
+type CreateState = { title: string; description: string; timeLimit: string; subjectId: number | null };
+
+const ALL = "all" as const;
+const UNCLASSIFIED = "none";
+
+function subjectKey(exam: ExamResponse) {
+  return exam.subjectId == null ? UNCLASSIFIED : String(exam.subjectId);
+}
 
 function ExamsWorkspace() {
   const qc = useQueryClient();
   const router = useRouter();
   const [create, setCreate] = useState<CreateState | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ExamResponse | null>(null);
+  const [subject, setSubject] = useState<string>(ALL);
 
   const { data: exams = [], isLoading } = useQuery({
     queryKey: ["exams"],
     queryFn: examApi.list,
   });
+
+  // 시험지를 과목별로 묶어 사이드바 구성
+  const subjectGroups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number }>();
+    for (const exam of exams) {
+      const key = subjectKey(exam);
+      const name = exam.subjectName ?? "미분류";
+      const cur = map.get(key);
+      if (cur) cur.count += 1;
+      else map.set(key, { key, name, count: 1 });
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.key === UNCLASSIFIED) return 1;
+      if (b.key === UNCLASSIFIED) return -1;
+      return a.name.localeCompare(b.name, "ko");
+    });
+  }, [exams]);
+
+  const visibleExams = useMemo(
+    () => (subject === ALL ? exams : exams.filter((exam) => subjectKey(exam) === subject)),
+    [exams, subject],
+  );
+
+  const { data: categoryRecords = [] } = useQuery({
+    queryKey: ["question-categories"],
+    queryFn: () => categoryApi.list(),
+  });
+  // 최상위 분류 = 과목
+  const subjects = useMemo(
+    () => buildCategoryTree(categoryRecords).map((node) => ({ id: node.id, name: node.name })),
+    [categoryRecords],
+  );
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["exams"] });
 
@@ -54,6 +96,7 @@ function ExamsWorkspace() {
         title: s.title.trim(),
         description: s.description.trim() || undefined,
         timeLimitMinutes: s.timeLimit ? Number(s.timeLimit) : null,
+        subjectId: s.subjectId,
         items: [],
       }),
     onSuccess: (exam) => {
@@ -98,42 +141,56 @@ function ExamsWorkspace() {
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
-      <div className="mx-auto w-full max-w-[1100px] space-y-6">
-        <section className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <div className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground">
-              <ClipboardList className="h-4 w-4" />
-              Exam
-            </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight">시험 출제</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              문제 은행의 문제로 시험지를 구성하고 발행합니다. 발행된 시험은 응시·자동 채점됩니다.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setCreate({ title: "", description: "", timeLimit: "" })}
-            className="inline-flex h-9 items-center gap-2 self-start rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            <FilePlus2 className="h-4 w-4" />
-            시험지 만들기
-          </button>
-        </section>
+      <div className="mx-auto grid w-full max-w-[1320px] gap-5 lg:grid-cols-[210px_minmax(0,1fr)]">
+        <SubjectSidebar
+          groups={subjectGroups}
+          total={exams.length}
+          selected={subject}
+          onSelect={setSubject}
+        />
 
-        {isLoading ? (
-          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            불러오는 중
+        <section className="min-w-0 space-y-6">
+          <div className="flex flex-col gap-4 border-b border-border pb-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <div className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground">
+                <ClipboardList className="h-4 w-4" />
+                Exam
+              </div>
+              <h1 className="mt-3 text-2xl font-bold tracking-tight">시험 출제</h1>
+              <p className="mt-1 text-sm text-muted-foreground">
+                문제 은행의 문제로 시험지를 구성하고 발행합니다. 발행된 시험은 응시·자동 채점됩니다.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCreate({ title: "", description: "", timeLimit: "", subjectId: null })}
+              className="inline-flex h-9 items-center gap-2 self-start rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <FilePlus2 className="h-4 w-4" />
+              시험지 만들기
+            </button>
           </div>
-        ) : exams.length === 0 ? (
-          <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border text-center">
-            <ClipboardList className="h-8 w-8 text-muted-foreground" />
-            <p className="mt-3 text-sm font-semibold">아직 시험지가 없습니다.</p>
-            <p className="mt-1 text-xs text-muted-foreground">우측 상단 버튼으로 첫 시험지를 만드세요.</p>
-          </div>
-        ) : (
-          <div className="grid gap-3">
-            {exams.map((exam) => {
+
+          {isLoading ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              불러오는 중
+            </div>
+          ) : exams.length === 0 ? (
+            <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border text-center">
+              <ClipboardList className="h-8 w-8 text-muted-foreground" />
+              <p className="mt-3 text-sm font-semibold">아직 시험지가 없습니다.</p>
+              <p className="mt-1 text-xs text-muted-foreground">우측 상단 버튼으로 첫 시험지를 만드세요.</p>
+            </div>
+          ) : visibleExams.length === 0 ? (
+            <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-border text-center">
+              <ClipboardList className="h-8 w-8 text-muted-foreground" />
+              <p className="mt-3 text-sm font-semibold">이 과목에는 시험지가 없습니다.</p>
+              <p className="mt-1 text-xs text-muted-foreground">다른 과목을 선택하거나 전체 보기로 돌아가세요.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {visibleExams.map((exam) => {
               const meta = STATUS_META[exam.status];
               return (
                 <div
@@ -184,18 +241,27 @@ function ExamsWorkspace() {
                           <ActionButton icon={Lock} disabled={closeMutation.isPending} onClick={() => closeMutation.mutate(exam.id)}>
                             마감
                           </ActionButton>
+                          <IconButton title="삭제" onClick={() => setConfirmDelete(exam)} danger>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </IconButton>
                         </>
                       )}
                       {exam.status === "CLOSED" && (
-                        <span className="text-xs text-muted-foreground">마감된 시험입니다.</span>
+                        <>
+                          <span className="text-xs text-muted-foreground">마감된 시험입니다.</span>
+                          <IconButton title="삭제" onClick={() => setConfirmDelete(exam)} danger>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </IconButton>
+                        </>
                       )}
                     </div>
                   </div>
                 </div>
               );
             })}
-          </div>
-        )}
+            </div>
+          )}
+        </section>
       </div>
 
       {create && (
@@ -219,6 +285,24 @@ function ExamsWorkspace() {
                   placeholder="예: 근의 공식, 판별식, 근과 계수 관계를 확인하는 단원 평가"
                   className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
+              </Field>
+              <Field label="과목 (선택)">
+                <select
+                  value={create.subjectId ?? ""}
+                  onChange={(e) =>
+                    setCreate((c) =>
+                      c ? { ...c, subjectId: e.target.value ? Number(e.target.value) : null } : c,
+                    )
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">미지정</option>
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </Field>
               <Field label="제한 시간(분, 비우면 무제한)">
                 <input
@@ -258,13 +342,73 @@ function ExamsWorkspace() {
       <ConfirmDialog
         open={confirmDelete !== null}
         title="시험지를 삭제할까요?"
-        description={`"${confirmDelete?.title}" 시험지와 관련 응시 기록이 영향을 받을 수 있습니다.`}
+        description={`"${confirmDelete?.title}" 시험지와 학습자의 모든 응시·채점 기록이 함께 삭제됩니다. 되돌릴 수 없습니다.`}
         confirmText="삭제"
         loading={deleteMutation.isPending}
         onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
         onCancel={() => setConfirmDelete(null)}
       />
     </main>
+  );
+}
+
+function SubjectSidebar({
+  groups,
+  total,
+  selected,
+  onSelect,
+}: {
+  groups: { key: string; name: string; count: number }[];
+  total: number;
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <aside className="lg:sticky lg:top-5 lg:self-start">
+      <div className="rounded-lg border border-border bg-background p-3">
+        <div className="flex items-center gap-2 px-1 pb-2">
+          <Layers className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-bold">과목</h2>
+        </div>
+        <div className="space-y-0.5">
+          <SubjectRow label="전체" count={total} active={selected === "all"} onClick={() => onSelect("all")} />
+          {groups.map((group) => (
+            <SubjectRow
+              key={group.key}
+              label={group.name}
+              count={group.count}
+              active={selected === group.key}
+              onClick={() => onSelect(group.key)}
+            />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function SubjectRow({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+        active ? "bg-primary/10 font-semibold text-primary" : "text-foreground hover:bg-accent"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      <span className={`shrink-0 text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>{count}</span>
+    </button>
   );
 }
 

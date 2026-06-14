@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { RequireRole } from "@/widgets/guards/RequireRole";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
+import { useConfirm } from "@/shared/ui/useConfirm";
 import { buildCategoryTree, categoryApi, type CategoryNode } from "@/entities/category/api/categoryApi";
 import { questionApi } from "@/entities/question/api/questionApi";
 import { toast, toastError } from "@/shared/lib/toast";
@@ -48,6 +49,7 @@ export default function QuestionBankPage() {
 function QuestionBankHub() {
   const qc = useQueryClient();
   const router = useRouter();
+  const { confirm, confirmDialog } = useConfirm();
   const [editor, setEditor] = useState<SubjectEditorState | null>(null);
   const [confirmEmbedKind, setConfirmEmbedKind] = useState<null | "PENDING" | "FAILED">(null);
 
@@ -217,9 +219,14 @@ function QuestionBankHub() {
                       </button>
                       <button
                         type="button"
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          if (confirm(`"${subject.name}" 과목을 삭제할까요?\n하위 분류나 문제가 있으면 삭제할 수 없습니다.`)) {
+                          if (await confirm({
+                            title: "과목 삭제",
+                            description: `"${subject.name}" 과목을 삭제할까요?\n하위 분류나 문제가 있으면 삭제할 수 없습니다.`,
+                            confirmText: "삭제",
+                            variant: "destructive",
+                          })) {
                             deleteMutation.mutate(subject.id);
                           }
                         }}
@@ -324,6 +331,7 @@ function QuestionBankHub() {
         onConfirm={() => embedMutation.mutate()}
         onCancel={() => setConfirmEmbedKind(null)}
       />
+      {confirmDialog}
     </main>
   );
 }

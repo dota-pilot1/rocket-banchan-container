@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -8,6 +8,7 @@ import {
   Clock3,
   FileText,
   History,
+  Layers,
   Loader2,
   PlayCircle,
   Trophy,
@@ -28,13 +29,43 @@ export default function PracticePage() {
   );
 }
 
+const ALL = "all" as const;
+const UNCLASSIFIED = "none";
+
+function subjectKey(exam: ExamResponse) {
+  return exam.subjectId == null ? UNCLASSIFIED : String(exam.subjectId);
+}
+
 function PracticeWorkspace() {
   const router = useRouter();
+  const [subject, setSubject] = useState<string>(ALL);
 
   const { data: exams = [], isLoading: examsLoading } = useQuery({
     queryKey: ["practice-exams"],
     queryFn: examApi.listPublished,
   });
+
+  // 발행된 시험을 과목별로 묶어 사이드바 구성
+  const subjectGroups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number }>();
+    for (const exam of exams) {
+      const key = subjectKey(exam);
+      const name = exam.subjectName ?? "미분류";
+      const cur = map.get(key);
+      if (cur) cur.count += 1;
+      else map.set(key, { key, name, count: 1 });
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.key === UNCLASSIFIED) return 1;
+      if (b.key === UNCLASSIFIED) return -1;
+      return a.name.localeCompare(b.name, "ko");
+    });
+  }, [exams]);
+
+  const visibleExams = useMemo(
+    () => (subject === ALL ? exams : exams.filter((exam) => subjectKey(exam) === subject)),
+    [exams, subject],
+  );
 
   const { data: attempts = [], isLoading: attemptsLoading } = useQuery({
     queryKey: ["my-attempts"],
@@ -62,7 +93,14 @@ function PracticeWorkspace() {
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
-      <div className="mx-auto grid w-full max-w-[1180px] gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mx-auto grid w-full max-w-[1320px] gap-5 lg:grid-cols-[200px_minmax(0,1fr)_300px]">
+        <SubjectSidebar
+          groups={subjectGroups}
+          total={exams.length}
+          selected={subject}
+          onSelect={setSubject}
+        />
+
         <section className="min-w-0 space-y-5">
           <div className="flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0">
@@ -91,9 +129,15 @@ function PracticeWorkspace() {
               title="아직 풀 수 있는 문제가 없습니다."
               body="관리자가 시험지를 발행하면 이곳에서 바로 풀이를 시작할 수 있습니다."
             />
+          ) : visibleExams.length === 0 ? (
+            <CenterState
+              icon={FileText}
+              title="이 과목에는 풀 수 있는 문제가 없습니다."
+              body="다른 과목을 선택하거나 전체 보기로 돌아가세요."
+            />
           ) : (
             <div className="grid gap-3">
-              {exams.map((exam) => (
+              {visibleExams.map((exam) => (
                 <PracticeExamCard
                   key={exam.id}
                   exam={exam}
@@ -135,6 +179,66 @@ function PracticeWorkspace() {
   );
 }
 
+function SubjectSidebar({
+  groups,
+  total,
+  selected,
+  onSelect,
+}: {
+  groups: { key: string; name: string; count: number }[];
+  total: number;
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  return (
+    <aside className="lg:sticky lg:top-5 lg:self-start">
+      <div className="rounded-lg border border-border bg-background p-3">
+        <div className="flex items-center gap-2 px-1 pb-2">
+          <Layers className="h-4 w-4 text-muted-foreground" />
+          <h2 className="text-sm font-bold">과목</h2>
+        </div>
+        <div className="space-y-0.5">
+          <SubjectRow label="전체" count={total} active={selected === "all"} onClick={() => onSelect("all")} />
+          {groups.map((group) => (
+            <SubjectRow
+              key={group.key}
+              label={group.name}
+              count={group.count}
+              active={selected === group.key}
+              onClick={() => onSelect(group.key)}
+            />
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function SubjectRow({
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
+        active ? "bg-primary/10 font-semibold text-primary" : "text-foreground hover:bg-accent"
+      }`}
+    >
+      <span className="truncate">{label}</span>
+      <span className={`shrink-0 text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>{count}</span>
+    </button>
+  );
+}
+
 function PracticeExamCard({
   exam,
   latestAttempt,
@@ -155,6 +259,11 @@ function PracticeExamCard({
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
+            {exam.subjectName && (
+              <span className="inline-flex items-center rounded-md border border-border bg-muted/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                {exam.subjectName}
+              </span>
+            )}
             <h2 className="text-base font-bold">{exam.title}</h2>
             {isSubmitted ? (
               <span className="inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">

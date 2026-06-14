@@ -1,6 +1,9 @@
 package com.cj.englishagenthub.exam.application;
 
+import com.cj.englishagenthub.attempt.infrastructure.ExamAttemptRepository;
 import com.cj.englishagenthub.auth.security.UserPrincipal;
+import com.cj.englishagenthub.category.domain.Category;
+import com.cj.englishagenthub.category.infrastructure.CategoryRepository;
 import com.cj.englishagenthub.common.exception.BusinessException;
 import com.cj.englishagenthub.common.exception.ErrorCode;
 import com.cj.englishagenthub.exam.domain.Exam;
@@ -27,6 +30,8 @@ public class ExamService {
     private final ExamRepository examRepository;
     private final QuestionRepository questionRepository;
     private final UserRepository userRepository;
+    private final CategoryRepository categoryRepository;
+    private final ExamAttemptRepository examAttemptRepository;
 
     @Transactional(readOnly = true)
     public List<ExamResponse> list() {
@@ -57,7 +62,7 @@ public class ExamService {
     public ExamResponse create(UserPrincipal principal, ExamUpsertRequest req) {
         User creator = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Exam exam = Exam.create(creator, req.title(), req.description(), req.timeLimitMinutes());
+        Exam exam = Exam.create(creator, req.title(), req.description(), req.timeLimitMinutes(), resolveSubject(req.subjectId()));
         exam.replaceItems(resolveItems(req.safeItems()));
         return ExamResponse.from(examRepository.save(exam));
     }
@@ -65,7 +70,7 @@ public class ExamService {
     @Transactional
     public ExamResponse update(String id, ExamUpsertRequest req) {
         Exam exam = loadOrThrow(id);
-        exam.updateMeta(req.title(), req.description(), req.timeLimitMinutes());
+        exam.updateMeta(req.title(), req.description(), req.timeLimitMinutes(), resolveSubject(req.subjectId()));
         exam.replaceItems(resolveItems(req.safeItems()));
         return ExamResponse.from(exam);
     }
@@ -87,7 +92,16 @@ public class ExamService {
     @Transactional
     public void delete(String id) {
         Exam exam = loadOrThrow(id);
+        // 응시 기록(및 cascade로 답안)을 먼저 제거해야 FK 제약에 걸리지 않는다.
+        examAttemptRepository.deleteAll(examAttemptRepository.findByExam_IdOrderByStartedAtDesc(id));
         examRepository.delete(exam);
+    }
+
+    /** 과목(분류) id를 Category로 해석. null이면 미분류. */
+    private Category resolveSubject(Long subjectId) {
+        if (subjectId == null) return null;
+        return categoryRepository.findById(subjectId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
     }
 
     /** 요청의 questionId들을 한 번에 조회해 순서를 유지하며 ItemSpec으로 변환. */

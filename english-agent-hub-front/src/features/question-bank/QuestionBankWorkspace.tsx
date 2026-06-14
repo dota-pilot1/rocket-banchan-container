@@ -42,6 +42,7 @@ import {
   type SimilarQuestion,
 } from "@/entities/question/api/questionApi";
 import { toast, toastError } from "@/shared/lib/toast";
+import { useConfirm } from "@/shared/ui/useConfirm";
 import { CategoryPickerDialog } from "./CategoryPickerDialog";
 
 const difficulties: { value: QuestionDifficulty; label: string }[] = [
@@ -95,6 +96,7 @@ const buildEmbeddingTextPreview = (
 
 export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
   const qc = useQueryClient();
+  const { confirm, confirmDialog } = useConfirm();
   const [filters, setFilters] = useState<QuestionListParams>({});
   const [form, setForm] = useState<QuestionUpsertRequest>(initialForm);
   const [choiceRows, setChoiceRows] = useState<string[]>(initialChoiceRows);
@@ -616,8 +618,15 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                       onEdit={() => handleEdit(question)}
                       onEmbed={() => setEmbedTarget(question)}
                       onShowSimilar={() => setSimilarTarget(question)}
-                      onDelete={() => {
-                        if (confirm("이 문제를 삭제할까요?")) deleteMutation.mutate(question.id);
+                      onDelete={async () => {
+                        if (await confirm({
+                          title: "문제 삭제",
+                          description: "이 문제를 삭제할까요?",
+                          confirmText: "삭제",
+                          variant: "destructive",
+                        })) {
+                          deleteMutation.mutate(question.id);
+                        }
                       }}
                     />
                   ))}
@@ -652,6 +661,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
         loading={isFetchingSimilar}
         onClose={() => setSimilarTarget(null)}
       />
+      {confirmDialog}
     </main>
   );
 }
@@ -688,6 +698,7 @@ function CategoryTree({
   onRename: (id: number, name: string) => void;
   onDelete: (id: number) => void;
 }) {
+  const { confirm, confirmDialog } = useConfirm();
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   const [menu, setMenu] = useState<TreeMenuState | null>(null);
   const [editor, setEditor] = useState<TreeEditorState | null>(null);
@@ -856,10 +867,15 @@ function CategoryTree({
           </button>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const target = menu.node;
               setMenu(null);
-              if (confirm(`"${target.name}" 분류를 삭제할까요?\n하위 분류나 문제가 있으면 삭제할 수 없습니다.`)) {
+              if (await confirm({
+                title: "분류 삭제",
+                description: `"${target.name}" 분류를 삭제할까요?\n하위 분류나 문제가 있으면 삭제할 수 없습니다.`,
+                confirmText: "삭제",
+                variant: "destructive",
+              })) {
                 onDelete(target.id);
               }
             }}
@@ -916,6 +932,7 @@ function CategoryTree({
           </div>
         </div>
       )}
+      {confirmDialog}
     </aside>
   );
 }

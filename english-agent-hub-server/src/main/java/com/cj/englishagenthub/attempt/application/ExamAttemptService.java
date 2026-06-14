@@ -92,6 +92,13 @@ public class ExamAttemptService {
                 .toList();
     }
 
+    /** 응시 기록 삭제 (관리자). 답안은 cascade/orphanRemoval 로 함께 삭제된다. */
+    @Transactional
+    public void delete(String attemptId) {
+        ExamAttempt attempt = loadOrThrow(attemptId);
+        attemptRepository.delete(attempt);
+    }
+
     private ExamAttempt loadOrThrow(String attemptId) {
         return attemptRepository.findById(attemptId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ATTEMPT_NOT_FOUND));

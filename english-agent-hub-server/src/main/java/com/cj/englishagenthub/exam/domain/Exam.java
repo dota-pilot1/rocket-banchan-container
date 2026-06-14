@@ -1,5 +1,6 @@
 package com.cj.englishagenthub.exam.domain;
 
+import com.cj.englishagenthub.category.domain.Category;
 import com.cj.englishagenthub.question.domain.Question;
 import com.cj.englishagenthub.user.domain.User;
 import jakarta.persistence.*;
@@ -33,6 +34,11 @@ public class Exam {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /** 과목(문제 분류 트리의 노드, 보통 최상위). null이면 미분류. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "subject_id")
+    private Category subject;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
@@ -57,21 +63,23 @@ public class Exam {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public static Exam create(User createdBy, String title, String description, Integer timeLimitMinutes) {
+    public static Exam create(User createdBy, String title, String description, Integer timeLimitMinutes, Category subject) {
         Exam exam = new Exam();
         exam.createdBy = createdBy;
         exam.title = title;
         exam.description = description;
         exam.timeLimitMinutes = normalizeTimeLimit(timeLimitMinutes);
+        exam.subject = subject;
         exam.status = ExamStatus.DRAFT;
         return exam;
     }
 
-    public void updateMeta(String title, String description, Integer timeLimitMinutes) {
+    public void updateMeta(String title, String description, Integer timeLimitMinutes, Category subject) {
         requireEditable();
         this.title = title;
         this.description = description;
         this.timeLimitMinutes = normalizeTimeLimit(timeLimitMinutes);
+        this.subject = subject;
     }
 
     /**

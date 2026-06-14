@@ -8,6 +8,7 @@ import type { ChatTurn, ChunkAnalysisResponse } from "@/entities/agent/api/agent
 import type { LearningAgent } from "@/entities/agent/model/learningAgents";
 import { toast, toastError } from "@/shared/lib/toast";
 import { Switch } from "@/shared/ui/Switch";
+import { useConfirm } from "@/shared/ui/useConfirm";
 
 type ChatMessage = {
   id: string;
@@ -385,6 +386,7 @@ function parseStoredInstructions(stored: string | null): AgentInstructions {
 const REALTIME_IDLE_LIMIT_MS = 120_000;
 
 export function AgentChatClient({ agentId }: { agentId: string }) {
+  const { confirm, confirmDialog } = useConfirm();
   const [agent, setAgent] = useState<LearningAgent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -641,9 +643,9 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
     }
   };
 
-  const openSettings = () => {
+  const openSettings = (tab: keyof AgentInstructions = "style") => {
     setInstrDraft(instr);
-    setSettingsTab("style");
+    setSettingsTab(tab);
     setSettingsOpen(true);
   };
 
@@ -1364,13 +1366,22 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
             대시보드
           </Link>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openSettings("character")}
+              title="캐릭터 정보·근황 등 페르소나 설정"
+              className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              캐릭터 설정
+            </button>
             <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
               <Volume2 className="h-4 w-4 text-primary" />
               {voiceStatusText}
             </div>
             <button
               type="button"
-              onClick={openSettings}
+              onClick={() => openSettings()}
               title="에이전트 지침(페르소나) 설정"
               className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors ${
                 hasCustomInstructions
@@ -1406,7 +1417,7 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <button
               type="button"
-              onClick={openSettings}
+              onClick={() => openSettings("character")}
               title="에이전트 지침(페르소나) 변경"
               className="group flex min-w-0 items-center gap-3 rounded-md text-left transition-colors hover:bg-accent/40"
             >
@@ -1887,7 +1898,7 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
           onClick={() => setSettingsOpen(false)}
         >
           <div
-            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl"
+            className="flex h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-background shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -1907,66 +1918,77 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
               </button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <div className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
-                {INSTRUCTION_TABS.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setSettingsTab(tab.key)}
-                    className={`relative -mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      settingsTab === tab.key
-                        ? "border-primary text-primary"
-                        : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                    {instrDraft[tab.key].trim() && (
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${settingsTab === tab.key ? "bg-primary" : "bg-primary/50"}`}
-                        aria-label="작성됨"
-                      />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {INSTRUCTION_TABS.filter((tab) => tab.key === settingsTab).map((tab) => (
-                <div key={tab.key} className="relative">
-                  {tab.key === "news" && (
+            <div className="flex min-h-0 flex-1">
+              <nav className="w-56 shrink-0 space-y-1 overflow-y-auto border-r border-border p-3">
+                {INSTRUCTION_TABS.map((tab) => {
+                  const active = settingsTab === tab.key;
+                  const filled = instrDraft[tab.key].trim().length > 0;
+                  return (
                     <button
+                      key={tab.key}
                       type="button"
-                      onClick={loadNews}
-                      disabled={newsLoading}
-                      title="구글 뉴스에서 오늘 헤드라인을 가져옵니다"
-                      className="absolute right-2 top-2 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={() => setSettingsTab(tab.key)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                        active
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      }`}
                     >
-                      <Newspaper className="h-3.5 w-3.5" />
-                      {newsLoading ? "불러오는 중..." : "오늘 뉴스 가져오기"}
+                      <span className="truncate">{tab.label}</span>
+                      {filled && (
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-primary" : "bg-primary/50"}`}
+                          aria-label="작성됨"
+                        />
+                      )}
                     </button>
-                  )}
-                  <textarea
-                    rows={11}
-                    value={instrDraft[tab.key]}
-                    onChange={(event) => setInstrDraft((draft) => ({ ...draft, [tab.key]: event.target.value }))}
-                    placeholder={tab.placeholder}
-                    className={`w-full resize-y rounded-md border border-border bg-background px-3 pb-2 text-sm leading-6 outline-none placeholder:text-muted-foreground ${
-                      tab.key === "news" ? "pt-11" : "pt-2"
-                    }`}
-                  />
-                </div>
-              ))}
-              <p className="mt-2 text-xs text-muted-foreground">
-                다섯 항목은 하나의 지침으로 합쳐 적용됩니다. 모두 비우면 이 에이전트의 기본 지침을 사용합니다.
-              </p>
+                  );
+                })}
+              </nav>
+
+              <div className="flex min-h-0 flex-1 flex-col p-5">
+                {INSTRUCTION_TABS.filter((tab) => tab.key === settingsTab).map((tab) => (
+                  <div key={tab.key} className="relative flex min-h-0 flex-1 flex-col">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold">{tab.label}</h3>
+                      {tab.key === "news" && (
+                        <button
+                          type="button"
+                          onClick={loadNews}
+                          disabled={newsLoading}
+                          title="구글 뉴스에서 오늘 헤드라인을 가져옵니다"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Newspaper className="h-3.5 w-3.5" />
+                          {newsLoading ? "불러오는 중..." : "오늘 뉴스 가져오기"}
+                        </button>
+                      )}
+                    </div>
+                    <textarea
+                      value={instrDraft[tab.key]}
+                      onChange={(event) => setInstrDraft((draft) => ({ ...draft, [tab.key]: event.target.value }))}
+                      placeholder={tab.placeholder}
+                      className="min-h-0 flex-1 w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                ))}
+                <p className="mt-3 shrink-0 text-xs text-muted-foreground">
+                  여섯 항목은 하나의 지침으로 합쳐 적용됩니다. 모두 비우면 이 에이전트의 기본 지침을 사용합니다.
+                </p>
+              </div>
             </div>
 
             <footer className="flex items-center justify-between gap-2 border-t border-border px-5 py-4">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const hasAny = Object.values(instrDraft).some((v) => v.trim());
-                  if (hasAny && !confirm("작성한 5개 항목을 모두 비울까요?")) return;
+                  if (hasAny && !(await confirm({
+                    title: "전체 비우기",
+                    description: "작성한 6개 항목을 모두 비울까요?",
+                    confirmText: "비우기",
+                    variant: "destructive",
+                  }))) return;
                   setInstrDraft(EMPTY_INSTRUCTIONS);
                 }}
                 className="inline-flex h-9 items-center gap-1.5 rounded-md border border-dashed border-border px-3 text-xs font-semibold text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
@@ -2000,6 +2022,7 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
         state={openChunkId ? chunkAnalysis[openChunkId] : undefined}
         onClose={() => setOpenChunkId(null)}
       />
+      {confirmDialog}
     </main>
   );
 }

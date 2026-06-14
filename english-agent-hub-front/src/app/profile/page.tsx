@@ -6,6 +6,7 @@ import { useAuth } from "@/entities/user/model/authStore";
 import { userApiKeyApi } from "@/entities/user/api/userApiKeyApi";
 import type { OpenAiApiKeyResponse, OpenAiApiKeyValidationResponse } from "@/entities/user/api/userApiKeyApi";
 import { toast, toastError } from "@/shared/lib/toast";
+import { useConfirm } from "@/shared/ui/useConfirm";
 
 export default function ProfilePage() {
   return (
@@ -100,6 +101,7 @@ function ProfileContent() {
 }
 
 function ApiKeyTab() {
+  const { confirm, confirmDialog } = useConfirm();
   const [status, setStatus] = useState<OpenAiApiKeyResponse | null>(null);
   const [draft, setDraft] = useState("");
   const [show, setShow] = useState(false);
@@ -144,7 +146,12 @@ function ApiKeyTab() {
   };
 
   const handleDelete = async () => {
-    if (!confirm("저장된 OpenAI API 키를 삭제할까요?\n이후 AI 기능은 시스템 기본 키로 동작합니다.")) return;
+    if (!(await confirm({
+      title: "API 키 삭제",
+      description: "저장된 OpenAI API 키를 삭제할까요?\n이후 AI 기능은 시스템 기본 키로 동작합니다.",
+      confirmText: "삭제",
+      variant: "destructive",
+    }))) return;
     setDeleting(true);
     setValidation(null);
     try {
@@ -269,6 +276,7 @@ function ApiKeyTab() {
           </div>
         </div>
       </Section>
+      {confirmDialog}
     </div>
   );
 }

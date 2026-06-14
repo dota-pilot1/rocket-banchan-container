@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -72,5 +73,13 @@ public class ExamAttemptController {
     @Operation(summary = "특정 시험의 응시 이력 (관리자)")
     public List<AttemptSummaryResponse> attemptsOfExam(@PathVariable String examId) {
         return attemptService.attemptsOfExam(examId);
+    }
+
+    @DeleteMapping("/{attemptId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "응시 기록 삭제 (관리자)")
+    public void deleteAttempt(@PathVariable String attemptId) {
+        attemptService.delete(attemptId);
     }
 }

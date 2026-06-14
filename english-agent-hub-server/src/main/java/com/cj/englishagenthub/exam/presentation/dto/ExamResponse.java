@@ -1,5 +1,6 @@
 package com.cj.englishagenthub.exam.presentation.dto;
 
+import com.cj.englishagenthub.category.domain.Category;
 import com.cj.englishagenthub.exam.domain.Exam;
 import com.cj.englishagenthub.exam.domain.ExamStatus;
 
@@ -13,6 +14,8 @@ public record ExamResponse(
         String id,
         String title,
         String description,
+        Long subjectId,
+        String subjectName,
         ExamStatus status,
         Integer timeLimitMinutes,
         int totalPoints,
@@ -28,6 +31,8 @@ public record ExamResponse(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
+                subjectId(exam),
+                subjectName(exam),
                 exam.getStatus(),
                 exam.getTimeLimitMinutes(),
                 exam.totalPoints(),
@@ -46,6 +51,8 @@ public record ExamResponse(
                 exam.getId(),
                 exam.getTitle(),
                 exam.getDescription(),
+                subjectId(exam),
+                subjectName(exam),
                 exam.getStatus(),
                 exam.getTimeLimitMinutes(),
                 exam.totalPoints(),
@@ -56,5 +63,15 @@ public record ExamResponse(
                 exam.getCreatedAt(),
                 exam.getUpdatedAt()
         );
+    }
+
+    private static Long subjectId(Exam exam) {
+        Category subject = exam.getSubject();
+        return subject == null ? null : subject.getId();
+    }
+
+    private static String subjectName(Exam exam) {
+        Category subject = exam.getSubject();
+        return subject == null ? null : subject.getName();
     }
 }
