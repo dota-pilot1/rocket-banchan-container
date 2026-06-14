@@ -189,32 +189,31 @@ function ExamsWorkspace() {
               <p className="mt-1 text-xs text-muted-foreground">다른 과목을 선택하거나 전체 보기로 돌아가세요.</p>
             </div>
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               {visibleExams.map((exam) => {
               const meta = STATUS_META[exam.status];
               return (
                 <div
                   key={exam.id}
-                  className="rounded-lg border border-border bg-background p-4"
+                  className="flex flex-col rounded-lg border border-border bg-background p-4"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${meta.tone}`}>
-                          {meta.label}
-                        </span>
-                        <h3 className="truncate text-base font-bold">{exam.title}</h3>
-                      </div>
-                      {exam.description && (
-                        <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{exam.description}</p>
-                      )}
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        문항 {exam.itemCount}개 · 총점 {exam.totalPoints}점
-                        {exam.timeLimitMinutes ? ` · 제한 ${exam.timeLimitMinutes}분` : " · 시간 무제한"}
-                      </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-xs font-semibold ${meta.tone}`}>
+                        {meta.label}
+                      </span>
+                      <h3 className="truncate text-base font-bold">{exam.title}</h3>
                     </div>
+                    {exam.description && (
+                      <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{exam.description}</p>
+                    )}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      문항 {exam.itemCount}개 · 총점 {exam.totalPoints}점
+                      {exam.timeLimitMinutes ? ` · 제한 ${exam.timeLimitMinutes}분` : " · 시간 무제한"}
+                    </p>
+                  </div>
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
                       {exam.status === "DRAFT" && (
                         <>
                           <ActionButton onClick={() => router.push(`/exams/build?id=${exam.id}`)} icon={Pencil}>
@@ -254,7 +253,6 @@ function ExamsWorkspace() {
                           </IconButton>
                         </>
                       )}
-                    </div>
                   </div>
                 </div>
               );

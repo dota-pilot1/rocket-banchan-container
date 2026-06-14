@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, CheckCircle2, Loader2, Trash2, Trophy, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, Loader2, Trash2, Trophy, X, XCircle } from "lucide-react";
 import { RequireRole } from "@/widgets/guards/RequireRole";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
 import {
@@ -90,7 +90,7 @@ function ExamResultsWorkspace() {
           </div>
         </div>
 
-        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)_420px]">
+        <div className="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
           {/* 시험 목록 사이드바 */}
           <aside className="min-w-0">
             <div className="rounded-lg border border-border bg-background">
@@ -158,12 +158,16 @@ function ExamResultsWorkspace() {
             </div>
           </section>
 
-          {/* 채점 결과 */}
-          <aside className="min-w-0">
-            <ResultPanel result={result ?? null} loading={resultLoading} />
-          </aside>
         </div>
       </div>
+
+      {selectedAttemptId !== null && (
+        <ResultDialog
+          result={result ?? null}
+          loading={resultLoading}
+          onClose={() => setSelectedAttemptId(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={pendingDelete !== null}
@@ -246,60 +250,81 @@ function AttemptRow({
   );
 }
 
-function ResultPanel({ result, loading }: { result: AttemptResultResponse | null; loading: boolean }) {
-  if (loading) {
-    return (
-      <div className="rounded-lg border border-border bg-background p-5">
-        <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          결과 불러오는 중
-        </div>
-      </div>
-    );
-  }
-
-  if (!result) {
-    return (
-      <div className="rounded-lg border border-border bg-background p-5">
-        <p className="text-sm font-bold">채점 결과</p>
-        <p className="mt-3 rounded-md border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
-          왼쪽 응시자 목록에서 기록을 선택하세요.
-        </p>
-      </div>
-    );
-  }
-
-  const percent = result.maxScore > 0 ? Math.round((result.totalScore / result.maxScore) * 100) : 0;
+function ResultDialog({
+  result,
+  loading,
+  onClose,
+}: {
+  result: AttemptResultResponse | null;
+  loading: boolean;
+  onClose: () => void;
+}) {
+  const percent =
+    result && result.maxScore > 0 ? Math.round((result.totalScore / result.maxScore) * 100) : 0;
 
   return (
-    <div className="rounded-lg border border-border bg-background p-5">
-      <div className="flex items-center gap-2">
-        <Trophy className="h-4 w-4 text-primary" />
-        <p className="text-sm font-bold">{result.examTitle}</p>
-      </div>
-      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-center">
-        <p className="text-3xl font-extrabold tabular-nums">
-          {result.totalScore}
-          <span className="text-base font-bold text-muted-foreground"> / {result.maxScore}점</span>
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">정답률 {percent}%</p>
-      </div>
-
-      <div className="mt-4 max-h-[58vh] space-y-2 overflow-y-auto pr-1">
-        {result.items.map((item, index) => (
-          <div key={item.questionId} className="rounded-md border border-border p-3">
-            <div className="flex items-start justify-between gap-2">
-              <p className="min-w-0 text-sm font-semibold">
-                {index + 1}. {item.question}
-              </p>
-              <span className={item.correct ? "text-emerald-600" : "text-rose-600"}>
-                {item.correct ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">답안: {item.submittedAnswer || "(미응답)"}</p>
-            {!item.correct && <p className="mt-1 text-xs text-emerald-700">정답: {item.correctAnswer}</p>}
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/40 px-4 py-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-background shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/35 px-5 py-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Trophy className="h-4 w-4 shrink-0 text-primary" />
+            <h2 className="truncate text-base font-bold tracking-tight">
+              {result?.examTitle ?? "채점 결과"}
+            </h2>
           </div>
-        ))}
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent"
+            aria-label="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {loading || !result ? (
+          <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            결과 불러오는 중
+          </div>
+        ) : (
+          <div className="p-5">
+            <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+              <p className="text-3xl font-extrabold tabular-nums">
+                {result.totalScore}
+                <span className="text-base font-bold text-muted-foreground"> / {result.maxScore}점</span>
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">정답률 {percent}%</p>
+            </div>
+
+            <div className="mt-4 grid max-h-[60vh] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+              {result.items.map((item, index) => (
+                <div
+                  key={item.questionId}
+                  className={`break-inside-avoid rounded-md border p-3 ${
+                    item.correct ? "border-emerald-200 bg-emerald-50/40" : "border-rose-200 bg-rose-50/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="min-w-0 text-sm font-semibold">
+                      {index + 1}. {item.question}
+                    </p>
+                    <span className={item.correct ? "text-emerald-600" : "text-rose-600"}>
+                      {item.correct ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">답안: {item.submittedAnswer || "(미응답)"}</p>
+                  {!item.correct && <p className="mt-1 text-xs text-emerald-700">정답: {item.correctAnswer}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

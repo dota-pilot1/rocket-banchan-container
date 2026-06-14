@@ -82,28 +82,27 @@ function ExamTaker() {
   const answeredCount = take.items.filter((it) => (answers[it.questionId] ?? "").trim() !== "").length;
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
-      <div className="mx-auto w-full max-w-[760px] space-y-5">
-        <div className="border-b border-border pb-4">
+    <main className="min-h-[calc(100vh-3.5rem)] bg-gradient-to-b from-muted/60 via-muted/30 to-background px-4 py-4">
+      <div className="mx-auto w-full max-w-[1120px] space-y-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border pb-3">
           <button
             type="button"
             onClick={() => router.push("/exams")}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent"
+            aria-label="나가기"
           >
             <ArrowLeft className="h-4 w-4" />
-            나가기
           </button>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight">{take.title}</h1>
-          {take.description && <p className="mt-1 text-sm text-muted-foreground">{take.description}</p>}
-          <p className="mt-2 text-xs text-muted-foreground">
+          <h1 className="text-xl font-bold tracking-tight">{take.title}</h1>
+          <p className="text-xs text-muted-foreground">
             총 {take.items.length}문항 · 만점 {take.maxScore}점
             {take.timeLimitMinutes ? ` · 제한 ${take.timeLimitMinutes}분` : ""}
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="columns-1 gap-4 lg:columns-2">
           {take.items.map((it, i) => (
-            <div key={it.questionId} className="rounded-lg border border-border bg-background p-4">
+            <div key={it.questionId} className="mb-4 break-inside-avoid rounded-xl border border-border bg-background p-4 shadow-sm">
               <div className="flex items-start gap-2">
                 <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
                   {i + 1}
@@ -120,8 +119,10 @@ function ExamTaker() {
                           return (
                             <label
                               key={choice}
-                              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                                checked ? "border-primary bg-primary/5" : "border-border hover:bg-accent"
+                              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                                checked
+                                  ? "border-primary bg-primary/10 font-semibold text-primary"
+                                  : "border-border bg-muted/40 hover:border-primary/40 hover:bg-accent"
                               }`}
                             >
                               <input
@@ -142,7 +143,7 @@ function ExamTaker() {
                         value={answers[it.questionId] ?? ""}
                         onChange={(e) => setAnswers((a) => ({ ...a, [it.questionId]: e.target.value }))}
                         placeholder="답을 입력하세요"
-                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                        className="h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
                       />
                     )}
                   </div>
