@@ -196,9 +196,12 @@ export const agentChatApi = {
       )
       .then((r) => r.data),
 
-  fetchNews: (lang = "ko") =>
+  fetchNews: (lang = "ko", query?: string) =>
     api
-      .get<{ items: string[] }>("/api/ai/news", { params: { lang }, timeout: 15_000 })
+      .get<{ items: string[] }>("/api/ai/news", {
+        params: { lang, ...(query?.trim() ? { q: query.trim() } : {}) },
+        timeout: 15_000,
+      })
       .then((r) => r.data),
 
   transcribeAudio: async (audio: Blob, language?: string) => {

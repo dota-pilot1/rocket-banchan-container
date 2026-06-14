@@ -88,9 +88,11 @@ public class AiChatController {
     }
 
     @GetMapping("/news")
-    @Operation(summary = "오늘의 뉴스 헤드라인")
-    public NewsResponse news(@RequestParam(value = "lang", required = false) String lang) {
-        return aiChatService.fetchNews(lang);
+    @Operation(summary = "오늘의 뉴스 헤드라인 (q 지정 시 키워드/관심 분야 검색)")
+    public NewsResponse news(
+            @RequestParam(value = "lang", required = false) String lang,
+            @RequestParam(value = "q", required = false) String q) {
+        return aiChatService.fetchNews(lang, q);
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

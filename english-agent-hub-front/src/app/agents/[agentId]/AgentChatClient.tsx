@@ -122,8 +122,6 @@ function extractResponseText(response: unknown): string | null {
 function getAgentAccentClass(agentId: string) {
   const accentMap: Record<string, string> = {
     debate: "border-sky-200 bg-sky-50 text-sky-700",
-    roleplay: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    quiz: "border-amber-200 bg-amber-50 text-amber-700",
   };
 
   return accentMap[agentId] ?? "border-border bg-muted text-muted-foreground";
@@ -313,19 +311,6 @@ const INSTRUCTION_TABS: { key: keyof AgentInstructions; label: string; placehold
       "예: 친구처럼 편한 반말 톤으로, 쉬운 단어만 써서 1~2문장으로 짧게 답해줘. 가끔 더 자연스러운 표현을 한 줄 알려줘.",
   },
   {
-    key: "scenario",
-    label: "참고 시나리오",
-    placeholder: `예 (카페 응대 시나리오):
-1) 인사하고 무엇을 주문하실지 묻기
-2) 사이즈(Tall/Grande/Venti) 묻기
-3) 핫/아이스, 시럽, 휘핑 같은 옵션 묻기
-4) 추가 메뉴 있는지 묻기
-5) 매장/포장 여부 묻기
-6) 결제 방식 묻고 영수증/포인트 마무리
-
-이 절차를 한 번에 한 단계씩 진행하고, 학습자가 답하기 전엔 다음 단계로 넘어가지 마.`,
-  },
-  {
     key: "character",
     label: "캐릭터 정보",
     placeholder: "예: 이름은 Mike, 29살, 취미는 자전거 타기, 직업은 야구 선수.",
@@ -346,6 +331,19 @@ const INSTRUCTION_TABS: { key: keyof AgentInstructions; label: string; placehold
     label: "캐릭터 근황",
     placeholder:
       "예: 오늘 아침 자전거 탔음. 어제 경기에서 홈런 침. 요즘 한국어 공부 중. — 대화 중 자기 근황으로 자연스럽게 풀어줘.",
+  },
+  {
+    key: "scenario",
+    label: "예제 시나리오",
+    placeholder: `예 (카페 응대 시나리오):
+1) 인사하고 무엇을 주문하실지 묻기
+2) 사이즈(Tall/Grande/Venti) 묻기
+3) 핫/아이스, 시럽, 휘핑 같은 옵션 묻기
+4) 추가 메뉴 있는지 묻기
+5) 매장/포장 여부 묻기
+6) 결제 방식 묻고 영수증/포인트 마무리
+
+이 절차를 한 번에 한 단계씩 진행하고, 학습자가 답하기 전엔 다음 단계로 넘어가지 마.`,
   },
 ];
 
@@ -407,6 +405,8 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
   const [instrDraft, setInstrDraft] = useState<AgentInstructions>(EMPTY_INSTRUCTIONS);
   const [settingsTab, setSettingsTab] = useState<keyof AgentInstructions>("style");
   const [newsLoading, setNewsLoading] = useState(false);
+  const [newsPromptOpen, setNewsPromptOpen] = useState(false);
+  const [newsQuery, setNewsQuery] = useState("");
   const [chunkAnalysis, setChunkAnalysis] = useState<Record<string, ChunkAnalysisState>>({});
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -655,20 +655,23 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
     toast.success("에이전트 지침을 저장했습니다.");
   };
 
-  const loadNews = async () => {
+  const loadNews = async (query?: string) => {
+    const q = typeof query === "string" ? query.trim() : undefined;
     setNewsLoading(true);
     try {
-      const { items } = await agentChatApi.fetchNews("ko");
+      const { items } = await agentChatApi.fetchNews("ko", q);
       if (!items.length) {
-        toast.info("가져올 뉴스가 없습니다.");
+        toast.info(q ? `"${q}" 관련 뉴스를 찾지 못했습니다.` : "가져올 뉴스가 없습니다.");
         return;
       }
-      const formatted = ["오늘의 뉴스 (대화 중 자연스럽게 화제로 꺼내줘):", ...items.map((title, index) => `${index + 1}. ${title}`)].join(
-        "\n"
-      );
+      const heading = q
+        ? `"${q}" 관련 뉴스 (대화 중 자연스럽게 화제로 꺼내줘):`
+        : "오늘의 뉴스 (대화 중 자연스럽게 화제로 꺼내줘):";
+      const formatted = [heading, ...items.map((title, index) => `${index + 1}. ${title}`)].join("\n");
       setInstrDraft((draft) => ({ ...draft, news: formatted }));
       setSettingsTab("news");
-      toast.success(`오늘의 뉴스 ${items.length}개를 채웠습니다.`);
+      setNewsPromptOpen(false);
+      toast.success(q ? `"${q}" 뉴스 ${items.length}개를 채웠습니다.` : `오늘의 뉴스 ${items.length}개를 채웠습니다.`);
     } catch (error) {
       toastError(error, "뉴스를 가져오지 못했습니다.");
     } finally {
@@ -1381,19 +1384,6 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
             </div>
             <button
               type="button"
-              onClick={() => openSettings()}
-              title="에이전트 지침(페르소나) 설정"
-              className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition-colors ${
-                hasCustomInstructions
-                  ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
-                  : "border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
-              }`}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              {hasCustomInstructions ? "지침 (사용자 설정)" : "지침 설정"}
-            </button>
-            <button
-              type="button"
               onClick={toggleRealtimeSession}
               disabled={voiceStatus === "connecting"}
               title="OpenAI Realtime API 실시간 음성 대화 (사용량 과금이 큰 고급 모드입니다)"
@@ -1954,13 +1944,16 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
                       {tab.key === "news" && (
                         <button
                           type="button"
-                          onClick={loadNews}
+                          onClick={() => {
+                            setNewsQuery("");
+                            setNewsPromptOpen(true);
+                          }}
                           disabled={newsLoading}
-                          title="구글 뉴스에서 오늘 헤드라인을 가져옵니다"
+                          title="관심 분야·키워드로 뉴스를 검색해 가져옵니다"
                           className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Newspaper className="h-3.5 w-3.5" />
-                          {newsLoading ? "불러오는 중..." : "오늘 뉴스 가져오기"}
+                          뉴스 검색해 가져오기
                         </button>
                       )}
                     </div>
@@ -2017,6 +2010,86 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
           </div>
         </div>
       )}
+
+      {newsPromptOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => !newsLoading && setNewsPromptOpen(false)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-xl border border-border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-bold tracking-tight">
+                  <Newspaper className="h-4 w-4 text-primary" />
+                  뉴스 검색
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  관심 분야나 키워드를 입력하면 관련 뉴스를 가져옵니다. 비우면 오늘의 헤드라인을 가져옵니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="닫기"
+                disabled={newsLoading}
+                onClick={() => setNewsPromptOpen(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+
+            <div className="p-5">
+              <input
+                autoFocus
+                value={newsQuery}
+                onChange={(event) => setNewsQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !newsLoading) loadNews(newsQuery);
+                }}
+                placeholder="예: 손흥민, 인공지능, 클라이밍, 우주 탐사"
+                className="h-10 w-full rounded-md border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground"
+              />
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {["AI", "스포츠", "K-pop", "경제", "여행"].map((kw) => (
+                  <button
+                    key={kw}
+                    type="button"
+                    disabled={newsLoading}
+                    onClick={() => setNewsQuery(kw)}
+                    className="inline-flex h-7 items-center rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-50"
+                  >
+                    {kw}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <footer className="flex items-center justify-end gap-2 border-t border-border px-5 py-4">
+              <button
+                type="button"
+                disabled={newsLoading}
+                onClick={() => setNewsPromptOpen(false)}
+                className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                disabled={newsLoading}
+                onClick={() => loadNews(newsQuery)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {newsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Newspaper className="h-4 w-4" />}
+                {newsLoading ? "검색 중..." : newsQuery.trim() ? "검색해 가져오기" : "오늘 헤드라인 가져오기"}
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
       <ChunkAnalysisDialog
         open={openChunkId !== null}
         state={openChunkId ? chunkAnalysis[openChunkId] : undefined}

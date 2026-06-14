@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowRight, BookOpenText, Bot, Drama, KeyRound, MoreVertical, Newspaper, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Bot, KeyRound, MoreVertical, Newspaper, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { RequireAuth } from "@/widgets/guards/RequireAuth";
 import { agentChatApi } from "@/entities/agent/api/agentChatApi";
 import type { LearningAgent } from "@/entities/agent/model/learningAgents";
@@ -13,7 +13,7 @@ import { toast, toastError } from "@/shared/lib/toast";
 import { useConfirm } from "@/shared/ui/useConfirm";
 
 const ADMIN_ROLE = "ROLE_ADMIN";
-const BUILTIN_IDS = new Set(["debate", "roleplay", "quiz"]);
+const BUILTIN_IDS = new Set(["debate"]);
 
 export default function DashboardPage() {
   return (
@@ -231,13 +231,11 @@ type CardProps = {
 };
 
 function AgentCard({ agent, isBuiltin, character, canEdit, menuOpen, onMenuToggle, onEdit, onDelete }: CardProps) {
-  const iconMap = { debate: Newspaper, roleplay: Drama, quiz: BookOpenText } as const;
+  const iconMap = { debate: Newspaper } as const;
   const Icon = iconMap[agent.id as keyof typeof iconMap] ?? Bot;
 
   const accentMap: Record<string, string> = {
     debate: "border-sky-200 bg-sky-50 text-sky-700",
-    roleplay: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    quiz: "border-amber-200 bg-amber-50 text-amber-700",
   };
   const accent = accentMap[agent.id] ?? "border-border bg-muted text-muted-foreground";
 

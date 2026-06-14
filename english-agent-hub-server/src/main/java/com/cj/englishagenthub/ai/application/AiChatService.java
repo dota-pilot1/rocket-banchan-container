@@ -41,6 +41,8 @@ import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -412,10 +414,18 @@ public class AiChatService {
     private static final Pattern RSS_TITLE_PATTERN =
             Pattern.compile("<title>(?:<!\\[CDATA\\[)?(.*?)(?:\\]\\]>)?</title>", Pattern.DOTALL);
 
-    public NewsResponse fetchNews(String lang) {
-        String url = "en".equalsIgnoreCase(lang)
-                ? "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"
-                : "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko";
+    public NewsResponse fetchNews(String lang, String query) {
+        boolean en = "en".equalsIgnoreCase(lang);
+        String locale = en ? "hl=en-US&gl=US&ceid=US:en" : "hl=ko&gl=KR&ceid=KR:ko";
+
+        String url;
+        if (query != null && !query.isBlank()) {
+            // 키워드/관심 분야 검색: Google News 검색 RSS
+            String encoded = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
+            url = "https://news.google.com/rss/search?q=" + encoded + "&" + locale;
+        } else {
+            url = "https://news.google.com/rss?" + locale;
+        }
 
         try {
             String xml = RestClient.create()

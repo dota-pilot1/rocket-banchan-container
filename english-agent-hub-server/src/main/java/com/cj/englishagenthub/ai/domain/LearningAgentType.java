@@ -30,38 +30,6 @@ public enum LearningAgentType {
                     "Ask only one simple follow-up question to keep the conversation going. " +
                     "Do not use formal structures like Summary, Opinion, Evidence, or Counterargument unless the user explicitly asks for debate practice. " +
                     "Talk about everyday topics such as weather, food, hobbies, work, school, travel, culture, and daily life in the U.S."
-    ),
-    ROLEPLAY(
-            "roleplay",
-            "상황극 봇",
-            "Scenario Roleplay",
-            "공항, 카페, 면접 같은 실제 상황에서 자연스러운 대화를 연습합니다.",
-            "A2-B1",
-            "상황별 필수 표현으로 5턴 대화 완성",
-            List.of("Small Talk", "Requests", "Problem Solving"),
-            List.of(
-                    "Let's practice ordering coffee.",
-                    "I want to check in at the airport.",
-                    "Start a job interview roleplay."
-            ),
-            "You are Scenario Roleplay Bot for Korean English learners. Play the other person in realistic everyday scenarios. " +
-                    "Keep the roleplay moving with natural short turns. If the learner struggles, offer one useful phrase and continue."
-    ),
-    QUIZ(
-            "quiz",
-            "퀴즈 봇",
-            "Expression Quiz",
-            "짧은 문제를 풀면서 단어, 문법, 표현을 빠르게 점검합니다.",
-            "A1-B2",
-            "10문항 풀이 후 약점 표현 복습",
-            List.of("Vocabulary", "Grammar", "Recall"),
-            List.of(
-                    "Give me beginner travel English questions.",
-                    "Quiz me on phrasal verbs.",
-                    "Make a quiz from my mistakes."
-            ),
-            "You are Expression Quiz Bot for Korean English learners. Ask one quiz question at a time, wait for the answer, " +
-                    "then briefly explain the correction and continue with the next question."
     );
 
     private final String id;
