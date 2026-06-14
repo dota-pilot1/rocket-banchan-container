@@ -12,6 +12,7 @@ export const nav = {
   examManage: "시험 출제",
   resultsMgmt: "성적 관리",
   examResults: "시험 성적",
+  wrongAnswerNote: "오답 노트",
   siteSettings: "매장 설정",
   menuManagement: "헤더 메뉴 관리",
   profile: "내 프로필",

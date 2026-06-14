@@ -12,6 +12,7 @@ export const nav = {
   examManage: "考试出题",
   resultsMgmt: "成绩管理",
   examResults: "考试成绩",
+  wrongAnswerNote: "错题本",
   siteSettings: "店铺设置",
   menuManagement: "页头菜单管理",
   profile: "我的资料",

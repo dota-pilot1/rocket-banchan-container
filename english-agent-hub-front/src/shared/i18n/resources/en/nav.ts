@@ -12,6 +12,7 @@ export const nav = {
   examManage: "Exams",
   resultsMgmt: "Score Management",
   examResults: "Exam Scores",
+  wrongAnswerNote: "Wrong Answer Notes",
   siteSettings: "Store Settings",
   menuManagement: "Header Menu Management",
   profile: "My Profile",

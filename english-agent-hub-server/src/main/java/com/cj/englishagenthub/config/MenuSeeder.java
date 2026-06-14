@@ -48,6 +48,7 @@ public class MenuSeeder implements ApplicationRunner {
                 new MenuDef("EXAM_MANAGE",           "QUESTION", "시험 출제",     "nav.examManage",       "/exams",            "ClipboardList",   RoleSeeder.ROLE_ADMIN,   1),
                 new MenuDef("RESULTS",               null,       "성적 관리",     "nav.resultsMgmt",      null,                "BarChart3",       RoleSeeder.ROLE_ADMIN,   3),
                 new MenuDef("EXAM_RESULTS",          "RESULTS",  "시험 성적",     "nav.examResults",      "/exam-results",     "BarChart3",       RoleSeeder.ROLE_ADMIN,   0),
+                new MenuDef("WRONG_ANSWER_NOTE",     "RESULTS",  "오답 노트",     "nav.wrongAnswerNote",  "/wrong-answer-notes","NotebookPen",    RoleSeeder.ROLE_ADMIN,   1),
                 new MenuDef("ADMIN",                 null,       "설정 관리",     "nav.admin",            null,                "Settings",        RoleSeeder.ROLE_ADMIN,   4),
                 new MenuDef("ADMIN_USERS",           "ADMIN",    "유저 관리",     "nav.users",            "/users",            "Users",           RoleSeeder.ROLE_ADMIN,   0),
                 new MenuDef("ADMIN_ROLE_PERMISSIONS","ADMIN",    "역할-권한 매핑","nav.rolePermissions",  "/role-permissions", "ShieldCheck",     RoleSeeder.ROLE_ADMIN,   1),
