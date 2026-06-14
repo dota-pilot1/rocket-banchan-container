@@ -14,7 +14,10 @@ import java.util.Optional;
 public interface QuestionRepository extends JpaRepository<Question, String>, JpaSpecificationExecutor<Question> {
     Optional<Question> findFirstByQuestion(String question);
     List<Question> findByEmbeddingStatusInOrderByCreatedAtAsc(Collection<EmbeddingStatus> statuses, Pageable pageable);
+    List<Question> findByEmbeddingStatusInAndCategory_IdInOrderByCreatedAtAsc(
+            Collection<EmbeddingStatus> statuses, Collection<Long> categoryIds, Pageable pageable);
     long countByEmbeddingStatus(EmbeddingStatus status);
+    long countByEmbeddingStatusAndCategory_IdIn(EmbeddingStatus status, Collection<Long> categoryIds);
     long countByCategory_Id(Long categoryId);
     boolean existsByCategory_Id(Long categoryId);
 

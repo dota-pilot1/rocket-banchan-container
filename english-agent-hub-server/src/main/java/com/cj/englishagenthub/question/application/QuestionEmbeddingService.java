@@ -1,5 +1,6 @@
 package com.cj.englishagenthub.question.application;
 
+import com.cj.englishagenthub.category.application.CategoryService;
 import com.cj.englishagenthub.common.exception.BusinessException;
 import com.cj.englishagenthub.common.exception.ErrorCode;
 import com.cj.englishagenthub.question.domain.EmbeddingStatus;
@@ -19,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +30,7 @@ public class QuestionEmbeddingService {
     private final QuestionRepository questionRepository;
     private final EmbeddingModel embeddingModel;
     private final EntityManager entityManager;
+    private final CategoryService categoryService;
 
     @Value("${spring.ai.openai.embedding.options.model:text-embedding-3-small}")
     private String embeddingModelName;
@@ -76,18 +79,37 @@ public class QuestionEmbeddingService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
     public long countPending() {
-        return questionRepository.countByEmbeddingStatus(EmbeddingStatus.PENDING)
-                + questionRepository.countByEmbeddingStatus(EmbeddingStatus.FAILED);
+        return pendingCount(null);
+    }
+
+    private long pendingCount(Set<Long> categoryIds) {
+        if (categoryIds == null) {
+            return questionRepository.countByEmbeddingStatus(EmbeddingStatus.PENDING)
+                    + questionRepository.countByEmbeddingStatus(EmbeddingStatus.FAILED);
+        }
+        return questionRepository.countByEmbeddingStatusAndCategory_IdIn(EmbeddingStatus.PENDING, categoryIds)
+                + questionRepository.countByEmbeddingStatusAndCategory_IdIn(EmbeddingStatus.FAILED, categoryIds);
+    }
+
+    private long countStatus(EmbeddingStatus status, Set<Long> categoryIds) {
+        return categoryIds == null
+                ? questionRepository.countByEmbeddingStatus(status)
+                : questionRepository.countByEmbeddingStatusAndCategory_IdIn(status, categoryIds);
     }
 
     @Transactional(readOnly = true)
     public EmbeddingCounts counts() {
+        return counts(null);
+    }
+
+    @Transactional(readOnly = true)
+    public EmbeddingCounts counts(Long categoryId) {
+        Set<Long> categoryIds = categoryId == null ? null : categoryService.subtreeIds(categoryId);
         return new EmbeddingCounts(
-                questionRepository.countByEmbeddingStatus(EmbeddingStatus.PENDING),
-                questionRepository.countByEmbeddingStatus(EmbeddingStatus.COMPLETED),
-                questionRepository.countByEmbeddingStatus(EmbeddingStatus.FAILED)
+                countStatus(EmbeddingStatus.PENDING, categoryIds),
+                countStatus(EmbeddingStatus.COMPLETED, categoryIds),
+                countStatus(EmbeddingStatus.FAILED, categoryIds)
         );
     }
 
@@ -113,11 +135,21 @@ public class QuestionEmbeddingService {
 
     @Transactional
     public EmbeddingBatchResult embedPending(int limit) {
+        return embedPending(null, limit);
+    }
+
+    @Transactional
+    public EmbeddingBatchResult embedPending(Long categoryId, int limit) {
+        Set<Long> categoryIds = categoryId == null ? null : categoryService.subtreeIds(categoryId);
         int safeLimit = Math.max(1, Math.min(limit, 200));
-        List<Question> targets = questionRepository.findByEmbeddingStatusInOrderByCreatedAtAsc(
-                List.of(EmbeddingStatus.PENDING, EmbeddingStatus.FAILED),
-                PageRequest.of(0, safeLimit)
-        );
+        List<Question> targets = categoryIds == null
+                ? questionRepository.findByEmbeddingStatusInOrderByCreatedAtAsc(
+                        List.of(EmbeddingStatus.PENDING, EmbeddingStatus.FAILED),
+                        PageRequest.of(0, safeLimit))
+                : questionRepository.findByEmbeddingStatusInAndCategory_IdInOrderByCreatedAtAsc(
+                        List.of(EmbeddingStatus.PENDING, EmbeddingStatus.FAILED),
+                        categoryIds,
+                        PageRequest.of(0, safeLimit));
         if (targets.isEmpty()) {
             return new EmbeddingBatchResult(0, 0, 0, 0);
         }
@@ -131,7 +163,7 @@ public class QuestionEmbeddingService {
             log.error("Embedding batch failed for {} questions", targets.size(), e);
             String msg = e.getMessage();
             for (Question q : targets) q.markFailed(msg);
-            return new EmbeddingBatchResult(targets.size(), 0, targets.size(), countPending());
+            return new EmbeddingBatchResult(targets.size(), 0, targets.size(), pendingCount(categoryIds));
         }
 
         int completed = 0;
@@ -153,7 +185,7 @@ public class QuestionEmbeddingService {
                 failed++;
             }
         }
-        return new EmbeddingBatchResult(targets.size(), completed, failed, countPending());
+        return new EmbeddingBatchResult(targets.size(), completed, failed, pendingCount(categoryIds));
     }
 
     private static String toVectorLiteral(float[] vector) {

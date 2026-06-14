@@ -62,7 +62,7 @@ function QuestionBankHub() {
 
   const { data: embeddingStatus } = useQuery({
     queryKey: ["questions", "embedding-status"],
-    queryFn: questionApi.embeddingStatus,
+    queryFn: () => questionApi.embeddingStatus(),
     refetchInterval: 30000,
   });
 

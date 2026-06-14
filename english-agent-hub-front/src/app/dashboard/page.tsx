@@ -286,7 +286,7 @@ function AgentCard({ agent, isBuiltin, character, canEdit, menuOpen, onMenuToggl
         </div>
       )}
 
-      <Link href={`/agents/${agent.id}`} className="flex h-full flex-col">
+      <Link href={`/agents/?id=${agent.id}`} className="flex h-full flex-col">
         <div className="flex items-start justify-between gap-3">
           <span className={`flex h-12 w-12 items-center justify-center rounded-md border ${accent}`}>
             <Icon className="h-6 w-6" />

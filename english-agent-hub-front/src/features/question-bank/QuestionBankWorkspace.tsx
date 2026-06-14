@@ -227,6 +227,41 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
     },
   });
 
+  const { data: embeddingCounts } = useQuery({
+    queryKey: ["questions", "embedding-status", subjectId],
+    queryFn: () => questionApi.embeddingStatus(subjectId),
+    refetchInterval: 30000,
+  });
+  const pendingCount = (embeddingCounts?.pending ?? 0) + (embeddingCounts?.failed ?? 0);
+
+  const embedBatchMutation = useMutation({
+    mutationFn: () => questionApi.embedPending(50, subjectId),
+    onSuccess: (result) => {
+      if (result.picked === 0) {
+        toast.success("임베딩 대기 중인 문제가 없습니다.");
+      } else {
+        toast.success(
+          `임베딩 ${result.completed}건 완료${result.failed > 0 ? `, ${result.failed}건 실패` : ""}` +
+            (result.stillPending > 0 ? ` (남은 대기 ${result.stillPending}건)` : ""),
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["questions"] });
+    },
+    onError: (e) => toastError(e, "임베딩 배치에 실패했습니다."),
+  });
+
+  const handleEmbedBatch = async () => {
+    if (
+      await confirm({
+        title: `${subject?.name ?? "이 과목"} 문제를 일괄 임베딩할까요?`,
+        description: `${subject?.name ?? "이 과목"}의 임베딩 대기·실패 상태 문제를 OpenAI로 한 번에 변환합니다. (한 번에 최대 50건)`,
+        confirmText: "임베딩 진행",
+      })
+    ) {
+      embedBatchMutation.mutate();
+    }
+  };
+
   const isMultipleChoice = form.questionType === "MULTIPLE_CHOICE";
 
   const effectiveAnswer = isMultipleChoice
@@ -357,11 +392,28 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
               {subject?.name ?? "과목"} 분류 트리에 문제를 등록하고 관리합니다.
             </p>
           </div>
-          <div className="flex items-end gap-3">
-            <div className="rounded-md border border-border bg-background px-3 py-2">
-              <p className="text-xs font-semibold text-muted-foreground">전체 문제</p>
-              <p className="mt-1 text-xl font-bold">{subject?.subtreeCount ?? 0}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm">
+              <span className="font-semibold text-muted-foreground">전체 문제</span>
+              <span className="font-bold tabular-nums">{subject?.subtreeCount ?? 0}</span>
             </div>
+            <button
+              type="button"
+              onClick={handleEmbedBatch}
+              disabled={embedBatchMutation.isPending || pendingCount === 0}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              title={pendingCount === 0 ? "임베딩 대기 중인 문제가 없습니다." : "대기·실패 문제를 일괄 임베딩"}
+            >
+              {embedBatchMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              임베딩 대기
+              <span className="rounded bg-muted px-1.5 py-0.5 text-xs font-bold tabular-nums text-muted-foreground">
+                {pendingCount}
+              </span>
+            </button>
             <button
               type="button"
               onClick={() => setFormOpen(true)}
@@ -968,10 +1020,10 @@ function QuestionItem({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CategoryPathBadge path={question.categoryPath} />
-            <span className="rounded-md border border-border px-2 py-1 text-xs font-semibold text-muted-foreground">
+            <span className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
               {difficultyLabel(question.difficulty)}
             </span>
-            <span className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-bold text-violet-700">
+            <span className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
               {questionTypeLabel(question.questionType)}
             </span>
             <EmbeddingStatusBadge status={question.embeddingStatus} model={question.embeddingModel} />
@@ -1317,7 +1369,7 @@ function EmbeddingStatusBadge({
   if (status === "COMPLETED") {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700"
+        className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700"
         title={model ? `임베딩됨 · ${model}` : "임베딩됨"}
       >
         <Check className="h-3 w-3" />
@@ -1327,14 +1379,14 @@ function EmbeddingStatusBadge({
   }
   if (status === "FAILED") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-bold text-red-700">
+      <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">
         <CircleAlert className="h-3 w-3" />
         임베딩 실패
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700">
+    <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
       <Clock className="h-3 w-3" />
       임베딩 대기
     </span>

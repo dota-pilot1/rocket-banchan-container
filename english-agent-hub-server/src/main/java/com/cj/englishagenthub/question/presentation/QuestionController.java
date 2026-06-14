@@ -66,9 +66,10 @@ public class QuestionController {
     @PostMapping("/embed-pending")
     @Operation(summary = "PENDING/FAILED 문제 배치 임베딩")
     public QuestionEmbeddingService.EmbeddingBatchResult embedPending(
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(defaultValue = "50") int limit
     ) {
-        return questionEmbeddingService.embedPending(limit);
+        return questionEmbeddingService.embedPending(categoryId, limit);
     }
 
     @PostMapping("/{id}/embed")
@@ -88,7 +89,9 @@ public class QuestionController {
 
     @GetMapping("/embedding-status")
     @Operation(summary = "임베딩 상태별 문제 수 조회")
-    public QuestionEmbeddingService.EmbeddingCounts embeddingStatus() {
-        return questionEmbeddingService.counts();
+    public QuestionEmbeddingService.EmbeddingCounts embeddingStatus(
+            @RequestParam(required = false) Long categoryId
+    ) {
+        return questionEmbeddingService.counts(categoryId);
     }
 }

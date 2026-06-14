@@ -75,14 +75,20 @@ export const questionApi = {
   update: (id: string, body: QuestionUpsertRequest) =>
     api.put<QuestionResponse>(`/api/questions/${id}`, body).then((r) => r.data),
   delete: (id: string) => api.delete<void>(`/api/questions/${id}`).then(() => undefined),
-  embedPending: (limit = 50) =>
+  embedPending: (limit = 50, categoryId?: number) =>
     api
-      .post<EmbeddingBatchResult>(`/api/questions/embed-pending`, undefined, { params: { limit } })
+      .post<EmbeddingBatchResult>(`/api/questions/embed-pending`, undefined, {
+        params: { limit, ...(categoryId != null ? { categoryId } : {}) },
+      })
       .then((r) => r.data),
   embedOne: (id: string) =>
     api.post<QuestionResponse>(`/api/questions/${id}/embed`).then((r) => r.data),
-  embeddingStatus: () =>
-    api.get<EmbeddingStatusResponse>(`/api/questions/embedding-status`).then((r) => r.data),
+  embeddingStatus: (categoryId?: number) =>
+    api
+      .get<EmbeddingStatusResponse>(`/api/questions/embedding-status`, {
+        params: categoryId != null ? { categoryId } : {},
+      })
+      .then((r) => r.data),
   findSimilar: (id: string, limit = 10) =>
     api
       .get<SimilarQuestion[]>(`/api/questions/${id}/similar`, { params: { limit } })
