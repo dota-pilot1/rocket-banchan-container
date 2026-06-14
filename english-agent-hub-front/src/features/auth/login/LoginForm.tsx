@@ -19,6 +19,8 @@ type LoginFormProps = {
   nextPath?: string;
 };
 
+const TEST_ACCOUNT = { email: "terecal@daum.net", password: "test1234" } as const;
+
 export function LoginForm({ nextPath }: LoginFormProps) {
   const router = useRouter();
   const { t } = useTranslation("auth");
@@ -33,15 +35,22 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     register,
     handleSubmit,
     setError,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     mode: "onBlur",
     defaultValues: {
-      email: "terecal@daum.net",
-      password: "password123",
+      email: TEST_ACCOUNT.email,
+      password: TEST_ACCOUNT.password,
     },
   });
+
+  const fillTestAccount = () => {
+    setFormError(null);
+    setValue("email", TEST_ACCOUNT.email, { shouldValidate: true });
+    setValue("password", TEST_ACCOUNT.password, { shouldValidate: true });
+  };
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -52,9 +61,13 @@ export function LoginForm({ nextPath }: LoginFormProps) {
     } catch (e) {
       const apiError = getApiError(e);
       if (apiError?.code === "AUTH_003") {
-        setError("password", { type: "server", message: apiError.message });
+        // 자격증명 오류: 상단 배너로 또렷하게 + 두 필드 모두 강조
+        setFormError(apiError.message);
+        setError("email", { type: "server" });
+        setError("password", { type: "server" });
       } else if (apiError?.code === "AUTH_004") {
-        setError("email", { type: "server", message: apiError.message });
+        setFormError(apiError.message);
+        setError("email", { type: "server" });
       } else {
         setFormError(apiError?.message ?? t("loginFailed"));
       }
@@ -63,6 +76,19 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={fillTestAccount}
+          title="클릭하면 테스트 계정이 자동 입력됩니다"
+          className="rounded-md border border-border bg-muted/40 px-2.5 py-1 text-right text-[11px] leading-tight text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        >
+          <span className="font-semibold text-foreground">테스트 계정</span>
+          <br />
+          {TEST_ACCOUNT.email} / {TEST_ACCOUNT.password}
+        </button>
+      </div>
+
       {formError && (
         <div
           role="alert"
