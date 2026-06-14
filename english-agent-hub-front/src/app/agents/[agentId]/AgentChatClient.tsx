@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Bot, Download, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 import { agentChatApi } from "@/entities/agent/api/agentChatApi";
 import type { ChatTurn, ChunkAnalysisResponse } from "@/entities/agent/api/agentChatApi";
 import type { LearningAgent } from "@/entities/agent/model/learningAgents";
@@ -657,11 +657,55 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
     toast.success("에이전트 지침을 저장했습니다.");
   };
 
-  // 현재 작성 중인 6개 항목을 엑셀(.xlsx)로 내보낸다. (항목 | 내용)
+  // 현재 작성 중인 6개 항목을 보기 좋게 스타일링한 엑셀(.xlsx)로 내보낸다. (항목 | 내용)
   const exportInstructionsXlsx = () => {
     const rows = INSTRUCTION_TABS.map((tab) => ({ 항목: tab.label, 내용: instrDraft[tab.key] ?? "" }));
     const sheet = XLSX.utils.json_to_sheet(rows, { header: ["항목", "내용"] });
-    sheet["!cols"] = [{ wch: 14 }, { wch: 80 }];
+    sheet["!cols"] = [{ wch: 16 }, { wch: 90 }];
+
+    const thin = { style: "thin", color: { rgb: "D1D5DB" } };
+    const border = { top: thin, bottom: thin, left: thin, right: thin };
+
+    // 헤더 행: 진한 배경 + 흰 글자
+    ["A1", "B1"].forEach((addr) => {
+      if (!sheet[addr]) return;
+      sheet[addr].s = {
+        font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+        fill: { patternType: "solid", fgColor: { rgb: "2563EB" } },
+        alignment: { horizontal: "left", vertical: "center" },
+        border,
+      };
+    });
+
+    const rowHeights = [{ hpt: 22 }];
+    rows.forEach((row, i) => {
+      const r = i + 2; // 엑셀은 1-base, 헤더가 1행
+      const aAddr = `A${r}`;
+      const bAddr = `B${r}`;
+      // 첫 열(항목): 옅은 파란 배경 + 굵게 + 세로 가운데
+      if (sheet[aAddr]) {
+        sheet[aAddr].s = {
+          font: { bold: true, color: { rgb: "1F2937" } },
+          fill: { patternType: "solid", fgColor: { rgb: "EFF6FF" } },
+          alignment: { horizontal: "left", vertical: "center", wrapText: true },
+          border,
+        };
+      }
+      // 내용: 세로 위 정렬 + 자동 줄바꿈
+      if (sheet[bAddr]) {
+        sheet[bAddr].s = {
+          font: { color: { rgb: "111827" } },
+          alignment: { horizontal: "left", vertical: "top", wrapText: true },
+          border,
+        };
+      }
+      // 기본 5줄 높이 확보, 내용이 더 길면 줄 수에 맞춰 확장(최대 30줄)
+      const lineCount = (row.내용.match(/\n/g)?.length ?? 0) + 1;
+      const lines = Math.min(Math.max(lineCount, 5), 30);
+      rowHeights.push({ hpt: lines * 16 });
+    });
+    sheet["!rows"] = rowHeights;
+
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(book, sheet, "캐릭터 지침");
     const safeTitle = (agent?.title || "agent").replace(/[\\/:*?"<>|]/g, "_");
