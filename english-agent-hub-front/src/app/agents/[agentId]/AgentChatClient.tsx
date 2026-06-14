@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bot, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, Sparkles, Square, Trash2, Volume2, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Download, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
+import * as XLSX from "xlsx";
 import { agentChatApi } from "@/entities/agent/api/agentChatApi";
 import type { ChatTurn, ChunkAnalysisResponse } from "@/entities/agent/api/agentChatApi";
 import type { LearningAgent } from "@/entities/agent/model/learningAgents";
@@ -415,6 +416,7 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const xlsxInputRef = useRef<HTMLInputElement | null>(null);
   const expressionRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordChunksRef = useRef<Blob[]>([]);
@@ -653,6 +655,46 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
     applyInstructions(instrDraft);
     setSettingsOpen(false);
     toast.success("에이전트 지침을 저장했습니다.");
+  };
+
+  // 현재 작성 중인 6개 항목을 엑셀(.xlsx)로 내보낸다. (항목 | 내용)
+  const exportInstructionsXlsx = () => {
+    const rows = INSTRUCTION_TABS.map((tab) => ({ 항목: tab.label, 내용: instrDraft[tab.key] ?? "" }));
+    const sheet = XLSX.utils.json_to_sheet(rows, { header: ["항목", "내용"] });
+    sheet["!cols"] = [{ wch: 14 }, { wch: 80 }];
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "캐릭터 지침");
+    const safeTitle = (agent?.title || "agent").replace(/[\\/:*?"<>|]/g, "_");
+    XLSX.writeFile(book, `캐릭터지침_${safeTitle}.xlsx`);
+  };
+
+  // 엑셀(.xlsx)을 읽어 항목 라벨로 매칭해 작성칸을 채운다.
+  const importInstructionsXlsx = async (file: File) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const book = XLSX.read(buffer, { type: "array" });
+      const sheet = book.Sheets[book.SheetNames[0]];
+      if (!sheet) throw new Error("빈 파일");
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+      const labelToKey = new Map(INSTRUCTION_TABS.map((tab) => [tab.label.trim(), tab.key]));
+      const next = { ...EMPTY_INSTRUCTIONS };
+      let matched = 0;
+      for (const row of rows) {
+        const label = String(row["항목"] ?? "").trim();
+        const key = labelToKey.get(label);
+        if (!key) continue;
+        next[key] = String(row["내용"] ?? "");
+        matched += 1;
+      }
+      if (matched === 0) {
+        toast.info("매칭되는 항목이 없습니다. '항목'/'내용' 열과 항목명을 확인하세요.");
+        return;
+      }
+      setInstrDraft(next);
+      toast.success(`${matched}개 항목을 불러왔습니다. 저장을 눌러 적용하세요.`);
+    } catch (error) {
+      toastError(error, "엑셀을 읽지 못했습니다.");
+    }
   };
 
   const loadNews = async (query?: string) => {
@@ -1941,21 +1983,41 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
                   <div key={tab.key} className="relative flex min-h-0 flex-1 flex-col">
                     <div className="mb-3 flex items-center justify-between gap-2">
                       <h3 className="text-sm font-bold">{tab.label}</h3>
-                      {tab.key === "news" && (
+                      <div className="flex items-center gap-1.5">
+                        {tab.key === "news" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setNewsQuery("");
+                              setNewsPromptOpen(true);
+                            }}
+                            disabled={newsLoading}
+                            title="관심 분야·키워드로 뉴스를 검색해 가져옵니다"
+                            className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Newspaper className="h-3.5 w-3.5" />
+                            뉴스 검색해 가져오기
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => {
-                            setNewsQuery("");
-                            setNewsPromptOpen(true);
-                          }}
-                          disabled={newsLoading}
-                          title="관심 분야·키워드로 뉴스를 검색해 가져옵니다"
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+                          onClick={exportInstructionsXlsx}
+                          title="작성한 6개 항목을 엑셀(.xlsx)로 내보냅니다"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground"
                         >
-                          <Newspaper className="h-3.5 w-3.5" />
-                          뉴스 검색해 가져오기
+                          <Download className="h-3.5 w-3.5" />
+                          엑셀
                         </button>
-                      )}
+                        <button
+                          type="button"
+                          onClick={() => xlsxInputRef.current?.click()}
+                          title="엑셀(.xlsx)을 불러와 6개 항목을 채웁니다"
+                          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-semibold text-muted-foreground shadow-sm transition-colors hover:border-primary hover:text-foreground"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          불러오기
+                        </button>
+                      </div>
                     </div>
                     <textarea
                       value={instrDraft[tab.key]}
@@ -1990,6 +2052,17 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
                 전체 비우기
               </button>
               <div className="flex items-center gap-2">
+                <input
+                  ref={xlsxInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) importInstructionsXlsx(file);
+                    event.target.value = "";
+                  }}
+                />
                 <button
                   type="button"
                   onClick={() => setSettingsOpen(false)}
