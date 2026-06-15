@@ -13,6 +13,7 @@ import {
   Filter,
   FolderPlus,
   FolderTree,
+  LayoutGrid,
   Layers,
   Loader2,
   Pencil,
@@ -20,6 +21,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Table2,
   Trash2,
   X,
 } from "lucide-react";
@@ -44,6 +46,9 @@ import {
 import { toast, toastError } from "@/shared/lib/toast";
 import { useConfirm } from "@/shared/ui/useConfirm";
 import { CategoryPickerDialog } from "./CategoryPickerDialog";
+import { QuestionGrid } from "./QuestionGrid";
+
+type ViewMode = "card" | "grid";
 
 const difficulties: { value: QuestionDifficulty; label: string }[] = [
   { value: "easy", label: "하" },
@@ -98,6 +103,8 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
   const qc = useQueryClient();
   const { confirm, confirmDialog } = useConfirm();
   const [filters, setFilters] = useState<QuestionListParams>({});
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [selected, setSelected] = useState<QuestionResponse[]>([]);
   const [form, setForm] = useState<QuestionUpsertRequest>(initialForm);
   const [choiceRows, setChoiceRows] = useState<string[]>(initialChoiceRows);
   const [answerIndex, setAnswerIndex] = useState<number | null>(null);
@@ -203,6 +210,57 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
     },
     onError: (e) => toastError(e, "문제 삭제에 실패했습니다."),
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => questionApi.delete(id))),
+    onSuccess: (_res, ids) => {
+      toast.success(`${ids.length}건을 삭제했습니다.`);
+      setSelected([]);
+      invalidateAll();
+    },
+    onError: (e) => toastError(e, "일괄 삭제에 실패했습니다."),
+  });
+
+  const bulkEmbedMutation = useMutation({
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => questionApi.embedOne(id))),
+    onSuccess: (results) => {
+      const completed = results.filter((q) => q.embeddingStatus === "COMPLETED").length;
+      const failed = results.filter((q) => q.embeddingStatus === "FAILED").length;
+      toast.success(`임베딩 ${completed}건 완료${failed > 0 ? `, ${failed}건 실패` : ""}`);
+      setSelected([]);
+      qc.invalidateQueries({ queryKey: ["questions"] });
+    },
+    onError: (e) => toastError(e, "일괄 임베딩에 실패했습니다."),
+  });
+
+  const handleBulkDelete = async () => {
+    const ids = selected.map((q) => q.id);
+    if (ids.length === 0) return;
+    if (
+      await confirm({
+        title: "선택 문제 삭제",
+        description: `선택한 ${ids.length}건을 삭제할까요?`,
+        confirmText: "삭제",
+        variant: "destructive",
+      })
+    ) {
+      bulkDeleteMutation.mutate(ids);
+    }
+  };
+
+  const handleBulkEmbed = async () => {
+    const ids = selected.map((q) => q.id);
+    if (ids.length === 0) return;
+    if (
+      await confirm({
+        title: "선택 문제 임베딩",
+        description: `선택한 ${ids.length}건을 OpenAI로 임베딩 벡터 변환할까요?`,
+        confirmText: "임베딩 진행",
+      })
+    ) {
+      bulkEmbedMutation.mutate(ids);
+    }
+  };
 
   const { data: similarList = [], isFetching: isFetchingSimilar } = useQuery({
     queryKey: ["questions", "similar", similarTarget?.id],
@@ -618,12 +676,8 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
           )}
 
           <section className="min-w-0 rounded-lg border border-border bg-background">
-            <div className="space-y-3 border-b border-border px-4 py-3">
-              <div>
-                <h2 className="text-base font-bold">문제 목록</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">총 {data.length}개</p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[140px_1.4fr_auto]">
+            <div className="border-b border-border px-4 py-3">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[140px_1.4fr_auto] lg:items-center">
                   <SelectField
                     size="sm"
                     value={filters.difficulty ?? ""}
@@ -636,14 +690,49 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                     onChange={(value) => setFilters((cur) => ({ ...cur, keyword: value }))}
                     placeholder="문제/해설 검색"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setFilters({})}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-semibold hover:bg-accent"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    필터 초기화
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <div className="inline-flex h-9 items-center rounded-md border border-border bg-muted/40 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewMode("card");
+                          setSelected([]);
+                        }}
+                        aria-pressed={viewMode === "card"}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-[5px] px-2.5 text-sm font-semibold transition-colors ${
+                          viewMode === "card"
+                            ? "bg-background shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="카드 보기"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                        카드
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        aria-pressed={viewMode === "grid"}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-[5px] px-2.5 text-sm font-semibold transition-colors ${
+                          viewMode === "grid"
+                            ? "bg-background shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                        title="그리드 보기"
+                      >
+                        <Table2 className="h-4 w-4" />
+                        그리드
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFilters({})}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-semibold hover:bg-accent"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      필터 초기화
+                    </button>
+                  </div>
               </div>
             </div>
 
@@ -657,6 +746,65 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                 <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-border text-center">
                   <Filter className="h-8 w-8 text-muted-foreground" />
                   <p className="mt-3 text-sm font-semibold">조건에 맞는 문제가 없습니다.</p>
+                </div>
+              ) : viewMode === "grid" ? (
+                <div className="space-y-3">
+                  <div className="flex h-9 items-center justify-between">
+                    {isFetching ? (
+                      <span className="text-xs font-medium text-muted-foreground">목록을 갱신하는 중입니다.</span>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {selected.length > 0 ? `${selected.length}건 선택됨` : "행을 선택해 일괄 작업할 수 있습니다."}
+                      </span>
+                    )}
+                    {selected.length > 0 && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleBulkEmbed}
+                          disabled={bulkEmbedMutation.isPending || bulkDeleteMutation.isPending}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-semibold hover:bg-accent disabled:opacity-50"
+                        >
+                          {bulkEmbedMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5" />
+                          )}
+                          선택 임베딩
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleBulkDelete}
+                          disabled={bulkEmbedMutation.isPending || bulkDeleteMutation.isPending}
+                          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {bulkDeleteMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                          선택 삭제
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <QuestionGrid
+                    rows={data}
+                    onEdit={handleEdit}
+                    onEmbed={setEmbedTarget}
+                    onShowSimilar={setSimilarTarget}
+                    onSelectionChange={setSelected}
+                    onDelete={async (question) => {
+                      if (await confirm({
+                        title: "문제 삭제",
+                        description: "이 문제를 삭제할까요?",
+                        confirmText: "삭제",
+                        variant: "destructive",
+                      })) {
+                        deleteMutation.mutate(question.id);
+                      }
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="space-y-3">
