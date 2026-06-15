@@ -26,6 +26,7 @@ import {
   UserPlus,
   Users,
   Utensils,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -279,6 +280,92 @@ function UserDropdown({
   );
 }
 
+function MobileNav({ tree }: { tree: MenuItem[] }) {
+  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // 라우트 이동 시 자동으로 닫기
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  return (
+    <div ref={ref} className="md:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="메뉴 열기"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-foreground transition-colors hover:bg-accent"
+      >
+        {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 max-h-[calc(100vh-3.5rem)] overflow-y-auto border-b border-border bg-background shadow-lg">
+          <nav className="flex flex-col gap-1 p-3">
+            {tree.map((item) => {
+              const leaves = flattenLeaves(item);
+              if (item.children.length === 0) {
+                const active = item.path && pathname.startsWith(item.path);
+                return (
+                  <Link
+                    key={item.id}
+                    href={item.path ?? "#"}
+                    onClick={() => setOpen(false)}
+                    className={`rounded-md px-3 py-2.5 text-sm transition-colors ${
+                      active
+                        ? "bg-accent font-medium text-foreground"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              }
+              return (
+                <div key={item.id} className="pt-1">
+                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {item.label}
+                  </p>
+                  {leaves.map((leaf) => {
+                    const active = leaf.path && pathname.startsWith(leaf.path);
+                    return (
+                      <Link
+                        key={leaf.id}
+                        href={leaf.path ?? "#"}
+                        target={leaf.isExternal ? "_blank" : undefined}
+                        rel={leaf.isExternal ? "noopener noreferrer" : undefined}
+                        onClick={() => setOpen(false)}
+                        className={`block rounded-md px-3 py-2.5 text-sm transition-colors ${
+                          active
+                            ? "bg-accent font-medium text-foreground"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                        }`}
+                      >
+                        {leaf.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Header() {
   const { t } = useTranslation("nav");
   const { status, user } = useAuth();
@@ -303,16 +390,24 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background/90 backdrop-blur-sm">
-      <div className="flex h-14 w-full items-center justify-between px-4">
-        <nav className="flex min-w-0 items-center gap-5">
+      <div className="relative flex h-14 w-full items-center justify-between px-4">
+        <nav className="flex min-w-0 items-center gap-2 md:gap-5">
+          {status === "authenticated" && tree.length > 0 && (
+            <MobileNav tree={tree} />
+          )}
           <Link
             href="/"
             className="mr-2 text-sm font-semibold tracking-tight hover:opacity-80 transition-opacity"
           >
             EnglishAgentHub
           </Link>
-          {status === "authenticated" &&
-            tree.map((item) => <NavItem key={item.id} item={item} />)}
+          {status === "authenticated" && (
+            <div className="hidden items-center gap-5 md:flex">
+              {tree.map((item) => (
+                <NavItem key={item.id} item={item} />
+              ))}
+            </div>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
