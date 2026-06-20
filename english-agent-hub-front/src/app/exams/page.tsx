@@ -17,7 +17,15 @@ import {
 } from "lucide-react";
 import { RequireRole } from "@/widgets/guards/RequireRole";
 import { ConfirmDialog } from "@/shared/ui/ConfirmDialog";
-import { examApi, type ExamResponse, type ExamStatus } from "@/entities/exam/api/examApi";
+import {
+  buildExamCategoryTree,
+  examApi,
+  examCategoryApi,
+  flattenExamCategoryTree,
+  type ExamCategoryNode,
+  type ExamResponse,
+  type ExamStatus,
+} from "@/entities/exam/api/examApi";
 import { buildCategoryTree, categoryApi } from "@/entities/category/api/categoryApi";
 import { toast, toastError } from "@/shared/lib/toast";
 
@@ -35,13 +43,29 @@ const STATUS_META: Record<ExamStatus, { label: string; tone: string }> = {
   CLOSED: { label: "마감", tone: "border-slate-200 bg-slate-100 text-slate-600" },
 };
 
-type CreateState = { title: string; description: string; timeLimit: string; subjectId: number | null };
+type CreateState = {
+  title: string;
+  description: string;
+  timeLimit: string;
+  subjectId: number | null;
+  examCategoryId: number | null;
+};
 
 const ALL = "all" as const;
 const UNCLASSIFIED = "none";
 
-function subjectKey(exam: ExamResponse) {
-  return exam.subjectId == null ? UNCLASSIFIED : String(exam.subjectId);
+function descendantIdsByCategory(roots: ExamCategoryNode[]) {
+  const map = new Map<number, Set<number>>();
+  const walk = (node: ExamCategoryNode): Set<number> => {
+    const ids = new Set<number>([node.id]);
+    node.children.forEach((child) => {
+      walk(child).forEach((id) => ids.add(id));
+    });
+    map.set(node.id, ids);
+    return ids;
+  };
+  roots.forEach(walk);
+  return map;
 }
 
 function ExamsWorkspace() {
@@ -56,36 +80,33 @@ function ExamsWorkspace() {
     queryFn: examApi.list,
   });
 
-  // 시험지를 과목별로 묶어 사이드바 구성
-  const subjectGroups = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; count: number }>();
-    for (const exam of exams) {
-      const key = subjectKey(exam);
-      const name = exam.subjectName ?? "미분류";
-      const cur = map.get(key);
-      if (cur) cur.count += 1;
-      else map.set(key, { key, name, count: 1 });
-    }
-    return Array.from(map.values()).sort((a, b) => {
-      if (a.key === UNCLASSIFIED) return 1;
-      if (b.key === UNCLASSIFIED) return -1;
-      return a.name.localeCompare(b.name, "ko");
-    });
-  }, [exams]);
-
-  const visibleExams = useMemo(
-    () => (subject === ALL ? exams : exams.filter((exam) => subjectKey(exam) === subject)),
-    [exams, subject],
-  );
-
   const { data: categoryRecords = [] } = useQuery({
     queryKey: ["question-categories"],
     queryFn: () => categoryApi.list(),
   });
+  const { data: examCategoryRecords = [] } = useQuery({
+    queryKey: ["exam-categories"],
+    queryFn: () => examCategoryApi.list(),
+  });
+  const examCategoryTree = useMemo(() => buildExamCategoryTree(examCategoryRecords), [examCategoryRecords]);
+  const descendantIds = useMemo(() => descendantIdsByCategory(examCategoryTree), [examCategoryTree]);
+  const uncategorizedCount = exams.filter((exam) => exam.examCategoryId == null).length;
+
+  const visibleExams = useMemo(() => {
+    if (subject === ALL) return exams;
+    if (subject === UNCLASSIFIED) return exams.filter((exam) => exam.examCategoryId == null);
+    const ids = descendantIds.get(Number(subject)) ?? new Set([Number(subject)]);
+    return exams.filter((exam) => exam.examCategoryId != null && ids.has(exam.examCategoryId));
+  }, [descendantIds, exams, subject]);
+
   // 최상위 분류 = 과목
   const subjects = useMemo(
     () => buildCategoryTree(categoryRecords).map((node) => ({ id: node.id, name: node.name })),
     [categoryRecords],
+  );
+  const examCategoryOptions = useMemo(
+    () => flattenExamCategoryTree(examCategoryTree),
+    [examCategoryTree],
   );
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["exams"] });
@@ -97,6 +118,7 @@ function ExamsWorkspace() {
         description: s.description.trim() || undefined,
         timeLimitMinutes: s.timeLimit ? Number(s.timeLimit) : null,
         subjectId: s.subjectId,
+        examCategoryId: s.examCategoryId,
         items: [],
       }),
     onSuccess: (exam) => {
@@ -143,8 +165,9 @@ function ExamsWorkspace() {
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-3 py-5 sm:px-4">
       <div className="grid w-full gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
         <SubjectSidebar
-          groups={subjectGroups}
+          categories={examCategoryTree}
           total={exams.length}
+          uncategorizedCount={uncategorizedCount}
           selected={subject}
           onSelect={setSubject}
         />
@@ -163,7 +186,7 @@ function ExamsWorkspace() {
             </div>
             <button
               type="button"
-              onClick={() => setCreate({ title: "", description: "", timeLimit: "", subjectId: null })}
+              onClick={() => setCreate({ title: "", description: "", timeLimit: "", subjectId: null, examCategoryId: null })}
               className="inline-flex h-9 items-center gap-2 self-start rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
             >
               <FilePlus2 className="h-4 w-4" />
@@ -284,7 +307,26 @@ function ExamsWorkspace() {
                   className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                 />
               </Field>
-              <Field label="과목 (선택)">
+              <Field label="시험지 분류 (선택)">
+                <select
+                  value={create.examCategoryId ?? ""}
+                  onChange={(e) =>
+                    setCreate((c) =>
+                      c ? { ...c, examCategoryId: e.target.value ? Number(e.target.value) : null } : c,
+                    )
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">미분류</option>
+                  {examCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {"　".repeat(category.depth)}
+                      {category.pathLabel}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="문제 출제 범위 (선택)">
                 <select
                   value={create.subjectId ?? ""}
                   onChange={(e) =>
@@ -294,7 +336,7 @@ function ExamsWorkspace() {
                   }
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="">미지정</option>
+                  <option value="">전체 문제은행</option>
                   {subjects.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name}
@@ -351,13 +393,15 @@ function ExamsWorkspace() {
 }
 
 function SubjectSidebar({
-  groups,
+  categories,
   total,
+  uncategorizedCount,
   selected,
   onSelect,
 }: {
-  groups: { key: string; name: string; count: number }[];
+  categories: ExamCategoryNode[];
   total: number;
+  uncategorizedCount: number;
   selected: string;
   onSelect: (key: string) => void;
 }) {
@@ -366,22 +410,58 @@ function SubjectSidebar({
       <div className="rounded-lg border border-border bg-background p-3">
         <div className="flex items-center gap-2 px-1 pb-2">
           <Layers className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-bold">과목</h2>
+          <h2 className="text-sm font-bold">시험지 분류</h2>
         </div>
         <div className="space-y-0.5">
           <SubjectRow label="전체" count={total} active={selected === "all"} onClick={() => onSelect("all")} />
-          {groups.map((group) => (
-            <SubjectRow
-              key={group.key}
-              label={group.name}
-              count={group.count}
-              active={selected === group.key}
-              onClick={() => onSelect(group.key)}
+          {categories.map((category) => (
+            <ExamCategoryRow
+              key={category.id}
+              node={category}
+              depth={0}
+              selected={selected}
+              onSelect={onSelect}
             />
           ))}
+          {uncategorizedCount > 0 && (
+            <SubjectRow
+              label="미분류"
+              count={uncategorizedCount}
+              active={selected === UNCLASSIFIED}
+              onClick={() => onSelect(UNCLASSIFIED)}
+            />
+          )}
         </div>
       </div>
     </aside>
+  );
+}
+
+function ExamCategoryRow({
+  node,
+  depth,
+  selected,
+  onSelect,
+}: {
+  node: ExamCategoryNode;
+  depth: number;
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  const key = String(node.id);
+  return (
+    <div>
+      <SubjectRow
+        label={node.name}
+        count={node.subtreeCount}
+        active={selected === key}
+        onClick={() => onSelect(key)}
+        indent={depth}
+      />
+      {node.children.map((child) => (
+        <ExamCategoryRow key={child.id} node={child} depth={depth + 1} selected={selected} onSelect={onSelect} />
+      ))}
+    </div>
   );
 }
 
@@ -390,16 +470,19 @@ function SubjectRow({
   count,
   active,
   onClick,
+  indent = 0,
 }: {
   label: string;
   count: number;
   active: boolean;
   onClick: () => void;
+  indent?: number;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      style={{ paddingLeft: 10 + indent * 14 }}
       className={`flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${
         active ? "bg-primary/10 font-semibold text-primary" : "text-foreground hover:bg-accent"
       }`}

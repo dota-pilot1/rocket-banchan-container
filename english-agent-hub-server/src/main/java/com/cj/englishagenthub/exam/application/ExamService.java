@@ -11,6 +11,8 @@ import com.cj.englishagenthub.exam.domain.ExamStatus;
 import com.cj.englishagenthub.exam.infrastructure.ExamRepository;
 import com.cj.englishagenthub.exam.presentation.dto.ExamResponse;
 import com.cj.englishagenthub.exam.presentation.dto.ExamUpsertRequest;
+import com.cj.englishagenthub.exam_category.domain.ExamCategory;
+import com.cj.englishagenthub.exam_category.infrastructure.ExamCategoryRepository;
 import com.cj.englishagenthub.question.domain.Question;
 import com.cj.englishagenthub.question.infrastructure.QuestionRepository;
 import com.cj.englishagenthub.user.domain.User;
@@ -31,6 +33,7 @@ public class ExamService {
     private final QuestionRepository questionRepository;
     private final UserRepository userRepository;
     private final CategoryRepository categoryRepository;
+    private final ExamCategoryRepository examCategoryRepository;
     private final ExamAttemptRepository examAttemptRepository;
 
     @Transactional(readOnly = true)
@@ -62,7 +65,14 @@ public class ExamService {
     public ExamResponse create(UserPrincipal principal, ExamUpsertRequest req) {
         User creator = userRepository.findById(principal.getId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        Exam exam = Exam.create(creator, req.title(), req.description(), req.timeLimitMinutes(), resolveSubject(req.subjectId()));
+        Exam exam = Exam.create(
+                creator,
+                req.title(),
+                req.description(),
+                req.timeLimitMinutes(),
+                resolveSubject(req.subjectId()),
+                resolveExamCategory(req.examCategoryId())
+        );
         exam.replaceItems(resolveItems(req.safeItems()));
         return ExamResponse.from(examRepository.save(exam));
     }
@@ -70,7 +80,13 @@ public class ExamService {
     @Transactional
     public ExamResponse update(String id, ExamUpsertRequest req) {
         Exam exam = loadOrThrow(id);
-        exam.updateMeta(req.title(), req.description(), req.timeLimitMinutes(), resolveSubject(req.subjectId()));
+        exam.updateMeta(
+                req.title(),
+                req.description(),
+                req.timeLimitMinutes(),
+                resolveSubject(req.subjectId()),
+                resolveExamCategory(req.examCategoryId())
+        );
         exam.replaceItems(resolveItems(req.safeItems()));
         return ExamResponse.from(exam);
     }
@@ -102,6 +118,12 @@ public class ExamService {
         if (subjectId == null) return null;
         return categoryRepository.findById(subjectId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.CATEGORY_NOT_FOUND));
+    }
+
+    private ExamCategory resolveExamCategory(Long examCategoryId) {
+        if (examCategoryId == null) return null;
+        return examCategoryRepository.findById(examCategoryId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.EXAM_CATEGORY_NOT_FOUND));
     }
 
     /** 요청의 questionId들을 한 번에 조회해 순서를 유지하며 ItemSpec으로 변환. */

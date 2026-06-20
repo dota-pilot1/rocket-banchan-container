@@ -16,6 +16,7 @@ public record ExamUpsertRequest(
         String description,
         Integer timeLimitMinutes,
         Long subjectId,
+        Long examCategoryId,
         @Valid List<Item> items
 ) {
     public List<Item> safeItems() {

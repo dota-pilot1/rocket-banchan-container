@@ -6,11 +6,15 @@ export type QuestionType = "MULTIPLE_CHOICE" | "SHORT_ANSWER";
 
 export type EmbeddingStatus = "PENDING" | "COMPLETED" | "FAILED";
 
+export type QuestionArea = "단어" | "문법" | "독해" | "듣기";
+
 export type QuestionResponse = {
   id: string;
   questionType: QuestionType;
   categoryId: number;
   categoryPath: string[];
+  area: QuestionArea | null;
+  listening: boolean;
   difficulty: QuestionDifficulty;
   question: string;
   passage?: string | null;

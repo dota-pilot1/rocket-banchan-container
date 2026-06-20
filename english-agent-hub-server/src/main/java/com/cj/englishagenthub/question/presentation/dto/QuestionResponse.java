@@ -13,6 +13,8 @@ public record QuestionResponse(
         QuestionType questionType,
         Long categoryId,
         List<String> categoryPath,
+        String area,
+        boolean listening,
         QuestionDifficulty difficulty,
         String question,
         String passage,
@@ -28,11 +30,15 @@ public record QuestionResponse(
         Instant updatedAt
 ) {
     public static QuestionResponse from(Question q) {
+        List<String> categoryPath = q.getCategory().getPathNames();
+        String area = resolveArea(categoryPath);
         return new QuestionResponse(
                 q.getId(),
                 q.getQuestionType(),
                 q.getCategory().getId(),
-                q.getCategory().getPathNames(),
+                categoryPath,
+                area,
+                "듣기".equals(area),
                 q.getDifficulty(),
                 q.getQuestion(),
                 q.getPassage(),
@@ -47,5 +53,12 @@ public record QuestionResponse(
                 q.getCreatedAt(),
                 q.getUpdatedAt()
         );
+    }
+
+    private static String resolveArea(List<String> categoryPath) {
+        return categoryPath.stream()
+                .filter(name -> name.equals("단어") || name.equals("문법") || name.equals("독해") || name.equals("듣기"))
+                .findFirst()
+                .orElse(null);
     }
 }

@@ -1,6 +1,7 @@
 package com.cj.englishagenthub.exam.domain;
 
 import com.cj.englishagenthub.category.domain.Category;
+import com.cj.englishagenthub.exam_category.domain.ExamCategory;
 import com.cj.englishagenthub.question.domain.Question;
 import com.cj.englishagenthub.user.domain.User;
 import jakarta.persistence.*;
@@ -39,6 +40,11 @@ public class Exam {
     @JoinColumn(name = "subject_id")
     private Category subject;
 
+    /** 시험지 운영 분류. 문제은행 출제 범위(subject)와 별도 관리한다. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "exam_category_id")
+    private ExamCategory examCategory;
+
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "created_by", nullable = false)
     private User createdBy;
@@ -63,23 +69,32 @@ public class Exam {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public static Exam create(User createdBy, String title, String description, Integer timeLimitMinutes, Category subject) {
+    public static Exam create(
+            User createdBy,
+            String title,
+            String description,
+            Integer timeLimitMinutes,
+            Category subject,
+            ExamCategory examCategory
+    ) {
         Exam exam = new Exam();
         exam.createdBy = createdBy;
         exam.title = title;
         exam.description = description;
         exam.timeLimitMinutes = normalizeTimeLimit(timeLimitMinutes);
         exam.subject = subject;
+        exam.examCategory = examCategory;
         exam.status = ExamStatus.DRAFT;
         return exam;
     }
 
-    public void updateMeta(String title, String description, Integer timeLimitMinutes, Category subject) {
+    public void updateMeta(String title, String description, Integer timeLimitMinutes, Category subject, ExamCategory examCategory) {
         requireEditable();
         this.title = title;
         this.description = description;
         this.timeLimitMinutes = normalizeTimeLimit(timeLimitMinutes);
         this.subject = subject;
+        this.examCategory = examCategory;
     }
 
     /**

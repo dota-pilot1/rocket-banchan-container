@@ -160,6 +160,7 @@ function ExamBuilder() {
         description: exam!.description ?? undefined,
         timeLimitMinutes: exam!.timeLimitMinutes,
         subjectId: exam!.subjectId,
+        examCategoryId: exam!.examCategoryId,
         items: selected.map((s) => ({ questionId: s.questionId, points: s.points || 1 })),
       }),
     onSuccess: () => {
@@ -177,6 +178,7 @@ function ExamBuilder() {
         description: exam!.description ?? undefined,
         timeLimitMinutes: exam!.timeLimitMinutes,
         subjectId: exam!.subjectId,
+        examCategoryId: exam!.examCategoryId,
         items: selected.map((s) => ({ questionId: s.questionId, points: s.points || 1 })),
       });
       return examApi.publish(examId);
@@ -290,11 +292,17 @@ function ExamBuilder() {
           >
             <ArrowLeft className="h-4 w-4" />
           </button>
-          <div className="ml-2 flex min-w-0 flex-1 items-center gap-2.5">
-            <h1 className="truncate text-lg font-bold leading-none tracking-tight">{exam.title}</h1>
-            <span className="shrink-0 text-xs leading-none text-muted-foreground">
-              {selected.length}문항 · {totalPoints}점
-            </span>
+          <div className="ml-2 flex min-w-0 flex-1 flex-col gap-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
+              <h1 className="truncate text-lg font-bold leading-none tracking-tight">{exam.title}</h1>
+              <span className="shrink-0 text-xs leading-none text-muted-foreground">
+                {selected.length}문항 · {totalPoints}점
+              </span>
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <MetaPill label="출제 범위" value={exam.subjectName ?? "전체 문제은행"} />
+              <MetaPill label="시험지 분류" value={exam.examCategoryName ?? "미분류"} />
+            </div>
           </div>
           {!readOnly && (
             <div className="ml-auto flex items-center gap-2">
@@ -629,6 +637,16 @@ function Badge({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
       {children}
+    </span>
+  );
+}
+
+function MetaPill({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center rounded-md border border-border bg-background px-2 py-1 text-xs">
+      <span className="shrink-0 font-semibold text-foreground">{label}</span>
+      <span className="mx-1 text-muted-foreground">·</span>
+      <span className="min-w-0 truncate text-muted-foreground">{value}</span>
     </span>
   );
 }

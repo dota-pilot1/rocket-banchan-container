@@ -3,6 +3,7 @@ package com.cj.englishagenthub.exam.presentation.dto;
 import com.cj.englishagenthub.category.domain.Category;
 import com.cj.englishagenthub.exam.domain.Exam;
 import com.cj.englishagenthub.exam.domain.ExamStatus;
+import com.cj.englishagenthub.exam_category.domain.ExamCategory;
 
 import java.time.Instant;
 import java.util.List;
@@ -16,6 +17,8 @@ public record ExamResponse(
         String description,
         Long subjectId,
         String subjectName,
+        Long examCategoryId,
+        String examCategoryName,
         ExamStatus status,
         Integer timeLimitMinutes,
         int totalPoints,
@@ -33,6 +36,8 @@ public record ExamResponse(
                 exam.getDescription(),
                 subjectId(exam),
                 subjectName(exam),
+                examCategoryId(exam),
+                examCategoryName(exam),
                 exam.getStatus(),
                 exam.getTimeLimitMinutes(),
                 exam.totalPoints(),
@@ -53,6 +58,8 @@ public record ExamResponse(
                 exam.getDescription(),
                 subjectId(exam),
                 subjectName(exam),
+                examCategoryId(exam),
+                examCategoryName(exam),
                 exam.getStatus(),
                 exam.getTimeLimitMinutes(),
                 exam.totalPoints(),
@@ -73,5 +80,15 @@ public record ExamResponse(
     private static String subjectName(Exam exam) {
         Category subject = exam.getSubject();
         return subject == null ? null : subject.getName();
+    }
+
+    private static Long examCategoryId(Exam exam) {
+        ExamCategory category = exam.getExamCategory();
+        return category == null ? null : category.getId();
+    }
+
+    private static String examCategoryName(Exam exam) {
+        ExamCategory category = exam.getExamCategory();
+        return category == null ? null : category.getName();
     }
 }

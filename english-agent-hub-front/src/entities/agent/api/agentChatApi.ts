@@ -187,11 +187,11 @@ export const agentChatApi = {
       .post<ChunkAnalysisResponse>("/api/ai/chunk-analysis", { text }, { timeout: 30_000 })
       .then((r) => r.data),
 
-  synthesizeSpeech: (text: string) =>
+  synthesizeSpeech: (text: string, voice?: string) =>
     api
       .post<ArrayBuffer>(
         "/api/ai/speech",
-        { text },
+        { text, voice },
         { responseType: "arraybuffer", timeout: 30_000 }
       )
       .then((r) => r.data),

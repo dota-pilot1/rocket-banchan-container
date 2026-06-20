@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -30,6 +32,24 @@ public class QuestionSeeder implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
 
     private static final Pattern PROMPT_TO_ENGLISH_PASSAGE = Pattern.compile("[?？]\\s+(?=[A-Z])");
+    private static final Set<String> ALLOWED_ENGLISH_CATEGORY_PATHS = Set.of(
+            "영어",
+            "영어 > 초등 영어",
+            "영어 > 초등 영어 > 단어",
+            "영어 > 초등 영어 > 문법",
+            "영어 > 초등 영어 > 독해",
+            "영어 > 초등 영어 > 듣기",
+            "영어 > 중학 영어",
+            "영어 > 중학 영어 > 단어",
+            "영어 > 중학 영어 > 문법",
+            "영어 > 중학 영어 > 독해",
+            "영어 > 중학 영어 > 듣기",
+            "영어 > 고등 영어",
+            "영어 > 고등 영어 > 단어",
+            "영어 > 고등 영어 > 문법",
+            "영어 > 고등 영어 > 독해",
+            "영어 > 고등 영어 > 듣기"
+    );
 
     private record QuestionDef(
             List<String> categoryPath,
@@ -48,6 +68,7 @@ public class QuestionSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         ensureVectorColumn();
+        ensureEnglishCategoryShape();
 
         List<QuestionDef> seeds = List.of(
                 q(List.of("수학", "산수", "덧셈"), QuestionDifficulty.easy,
@@ -160,32 +181,114 @@ public class QuestionSeeder implements ApplicationRunner {
                         "3·1 운동은 1919년 일제 강점기에 전국적으로 전개된 독립운동입니다.",
                         List.of("한국사", "근현대사", "독립운동", "3·1 운동")),
 
-                q(List.of("영어", "중등 영어", "단어뜻"), QuestionDifficulty.easy,
+                q(List.of("영어", "초등 영어", "단어"), QuestionDifficulty.easy,
+                        "다음 단어의 뜻은? \"apple\"", choices("사과", "바나나", "학교", "책상"), "사과",
+                        "apple은 사과라는 뜻입니다.",
+                        List.of("영어", "초등 영어", "단어", "apple")),
+                q(List.of("영어", "초등 영어", "문법"), QuestionDifficulty.easy,
+                        "I ____ a student.", choices("am", "is", "are", "be"), "am",
+                        "주어 I 뒤에는 be동사 am을 씁니다.",
+                        List.of("영어", "초등 영어", "문법", "be동사")),
+                qPassage(List.of("영어", "초등 영어", "독해"), QuestionDifficulty.easy,
+                        "What color is the ball?",
+                        "The ball is red.",
+                        List.of(),
+                        choices("Red", "Blue", "Green", "Yellow"), "Red",
+                        "The ball is red에서 공은 빨간색이라고 했습니다.",
+                        List.of("영어", "초등 영어", "독해", "color", "red")),
+                qPassage(List.of("영어", "초등 영어", "듣기"), QuestionDifficulty.easy,
+                        "대화를 듣고 남자가 원하는 물건을 고르시오.",
+                        "Boy: May I have a pencil, please?\nGirl: Sure. Here you are.",
+                        List.of(),
+                        choices("A pencil", "A book", "A bag", "A ruler"), "A pencil",
+                        "남자는 May I have a pencil, please?라고 말했습니다.",
+                        List.of("영어", "초등 영어", "듣기", "pencil")),
+
+                q(List.of("영어", "중학 영어", "단어"), QuestionDifficulty.easy,
                         "다음 단어의 뜻은? \"increase\"", List.of("증가하다", "감소하다", "멈추다", "빌리다"), "증가하다",
                         "increase는 수나 양이 늘어나다, 증가하다는 뜻입니다.",
-                        List.of("영어", "중등 영어", "단어", "뜻", "increase")),
-                qPassage(List.of("영어", "중등 영어", "문장해석"), QuestionDifficulty.easy,
+                        List.of("영어", "중학 영어", "단어", "뜻", "increase")),
+                qPassage(List.of("영어", "중학 영어", "독해"), QuestionDifficulty.easy,
                         "다음 문장을 해석하시오.",
                         "He is interested in science.",
                         List.of("He is interested in science. 해석하시오."),
                         choices("그는 과학에 관심이 있다.", "그는 과학을 가르친다.", "그는 과학을 싫어한다.", "그는 과학자가 아니다."), "그는 과학에 관심이 있다.",
                         "be interested in은 '~에 관심이 있다'라는 뜻입니다.",
-                        List.of("영어", "중등 영어", "문장 해석", "be interested in", "science")),
-                q(List.of("영어", "중등 영어", "문법기초"), QuestionDifficulty.medium,
+                        List.of("영어", "중학 영어", "독해", "문장 해석", "be interested in", "science")),
+                q(List.of("영어", "중학 영어", "문법"), QuestionDifficulty.medium,
                         "She usually ____ breakfast at 7 a.m.", List.of("has", "have", "having", "had"), "has",
                         "주어 She는 3인칭 단수이고 현재 습관이므로 has가 맞습니다.",
-                        List.of("영어", "중등 영어", "현재시제", "3인칭 단수")),
-                q(List.of("영어", "고등 영어", "어휘추론"), QuestionDifficulty.medium,
+                        List.of("영어", "중학 영어", "문법", "현재시제", "3인칭 단수")),
+                q(List.of("영어", "고등 영어", "단어"), QuestionDifficulty.medium,
                         "다음 단어와 뜻이 가장 비슷한 것은? \"begin\"", List.of("start", "finish", "close", "forget"), "start",
                         "begin과 start는 둘 다 시작하다는 뜻입니다.",
-                        List.of("영어", "고등 영어", "어휘추론", "begin", "start")),
-                qPassage(List.of("영어", "중등 영어", "내용일치"), QuestionDifficulty.medium,
+                        List.of("영어", "고등 영어", "단어", "어휘추론", "begin", "start")),
+                qPassage(List.of("영어", "중학 영어", "독해"), QuestionDifficulty.medium,
                         "How does Tom go to school?",
                         "Tom walks to school every day.",
                         List.of("Tom walks to school every day. How does Tom go to school?"),
                         List.of("By bus", "On foot", "By bike", "By train"), "On foot",
                         "walks to school은 걸어서 학교에 간다는 뜻입니다.",
-                        List.of("영어", "중등 영어", "내용일치", "walk", "school"))
+                        List.of("영어", "중학 영어", "독해", "내용일치", "walk", "school")),
+                q(List.of("영어", "중학 영어", "단어"), QuestionDifficulty.easy,
+                        "다음 단어의 뜻은? \"polite\"", choices("예의 바른", "시끄러운", "위험한", "느린"), "예의 바른",
+                        "polite는 예의 바르고 공손하다는 뜻입니다.",
+                        List.of("영어", "중학 영어", "단어", "뜻", "polite")),
+                q(List.of("영어", "중학 영어", "문법"), QuestionDifficulty.easy,
+                        "They ____ soccer after school.", choices("play", "plays", "playing", "played"), "play",
+                        "주어 They는 복수이고 현재의 일반적인 동작이므로 동사 원형 play가 맞습니다.",
+                        List.of("영어", "중학 영어", "문법", "현재시제", "복수 주어", "play")),
+                qPassage(List.of("영어", "중학 영어", "독해"), QuestionDifficulty.easy,
+                        "다음 문장을 해석하시오.",
+                        "Please turn off the light before you leave.",
+                        List.of(),
+                        choices("나가기 전에 불을 꺼 주세요.", "떠나기 전에 불을 켜 주세요.", "불이 켜진 뒤에 떠나세요.", "불을 고친 뒤에 돌아오세요."),
+                        "나가기 전에 불을 꺼 주세요.",
+                        "turn off는 끄다, before you leave는 떠나기 전에라는 뜻입니다.",
+                        List.of("영어", "중학 영어", "독해", "문장 해석", "turn off", "before")),
+                qPassage(List.of("영어", "중학 영어", "독해"), QuestionDifficulty.medium,
+                        "What will Mike do this Saturday?",
+                        "Mike has soccer practice every Saturday morning. This week, however, he will visit his grandmother with his family.",
+                        List.of(),
+                        choices("Visit his grandmother", "Go to soccer practice", "Study at the library", "Meet his teacher"),
+                        "Visit his grandmother",
+                        "This week, however 뒤에 이번 주에는 가족과 할머니를 방문한다고 했습니다.",
+                        List.of("영어", "중학 영어", "독해", "내용일치", "Saturday", "grandmother")),
+                qPassage(List.of("영어", "중학 영어", "듣기"), QuestionDifficulty.easy,
+                        "대화를 듣고 여자가 주문한 음료를 고르시오.",
+                        "Woman: I'd like a cup of orange juice, please.\nMan: Sure. Anything else?\nWoman: No, that's all.",
+                        List.of(),
+                        choices("Orange juice", "Milk", "Coffee", "Water"), "Orange juice",
+                        "여자는 I'd like a cup of orange juice라고 말했습니다.",
+                        List.of("영어", "중학 영어", "듣기", "음료", "orange juice")),
+                qPassage(List.of("영어", "중학 영어", "듣기"), QuestionDifficulty.medium,
+                        "대화를 듣고 남자가 내일 할 일을 고르시오.",
+                        "Girl: Are you going to the movie tomorrow?\nBoy: I can't. I have to help my brother move.\nGirl: Then let's meet next week.",
+                        List.of(),
+                        choices("Help his brother move", "Watch a movie", "Meet his teacher", "Buy a book"),
+                        "Help his brother move",
+                        "남자는 I have to help my brother move라고 했습니다.",
+                        List.of("영어", "중학 영어", "듣기", "plan", "move")),
+                q(List.of("영어", "고등 영어", "문법"), QuestionDifficulty.hard,
+                        "If I ____ more time, I would read the whole book.", choices("had", "have", "will have", "am having"), "had",
+                        "가정법 과거 문장이므로 if절에는 과거형 had를 씁니다.",
+                        List.of("영어", "고등 영어", "문법", "가정법", "had")),
+                qPassage(List.of("영어", "고등 영어", "독해"), QuestionDifficulty.medium,
+                        "What is the main idea of the passage?",
+                        "Small daily habits often shape long-term results. Reading a few pages, reviewing notes, or practicing a skill for ten minutes may seem minor, but repeated actions create meaningful progress over time.",
+                        List.of(),
+                        choices("Small repeated habits can lead to progress", "Long books are difficult to finish", "People should study only at night", "Ten minutes is never enough to learn"),
+                        "Small repeated habits can lead to progress",
+                        "작은 습관이 반복되면 장기적인 발전을 만든다는 내용이 중심입니다.",
+                        List.of("영어", "고등 영어", "독해", "main idea", "habit")),
+                qPassage(List.of("영어", "고등 영어", "듣기"), QuestionDifficulty.medium,
+                        "대화를 듣고 두 사람이 만날 장소를 고르시오.",
+                        "Woman: The library is too crowded today.\nMan: Then how about meeting at the cafe across from the station?\nWoman: Good idea. I'll see you there at three.",
+                        List.of(),
+                        choices("At a cafe", "At the library", "At the station platform", "At school"),
+                        "At a cafe",
+                        "두 사람은 역 맞은편 카페에서 만나기로 했습니다.",
+                        List.of("영어", "고등 영어", "듣기", "place", "cafe"))
         );
 
         int created = 0;
@@ -198,10 +301,15 @@ public class QuestionSeeder implements ApplicationRunner {
 
             Question existing = findExistingSeed(seed);
             if (existing != null) {
-                if (!existing.getQuestion().equals(seed.question())
-                        || !java.util.Objects.equals(existing.getPassage(), seed.passage())
+                if (!Objects.equals(existing.getCategory().getId(), category.getId())
+                        || !existing.getQuestion().equals(seed.question())
+                        || !Objects.equals(existing.getPassage(), seed.passage())
                         || existing.getQuestionType() != type
-                        || !existing.getChoices().equals(seed.choices())) {
+                        || existing.getDifficulty() != seed.difficulty()
+                        || !existing.getChoices().equals(seed.choices())
+                        || !Objects.equals(existing.getAnswer(), seed.answer())
+                        || !Objects.equals(existing.getExplanation(), seed.explanation())
+                        || !existing.getKeywords().equals(seed.keywords())) {
                     existing.update(
                             type,
                             category,
@@ -235,6 +343,7 @@ public class QuestionSeeder implements ApplicationRunner {
         if (created > 0) log.info("Seeded {} questions", created);
         if (updated > 0) log.info("Backfilled {} seeded questions to multiple-choice", updated);
 
+        cleanupUnexpectedEnglishCategories();
         backfillReadingPassages();
     }
 
@@ -274,13 +383,104 @@ public class QuestionSeeder implements ApplicationRunner {
         if (updated > 0) log.info("Backfilled {} reading passages", updated);
     }
 
+    private void ensureEnglishCategoryShape() {
+        for (String level : List.of("초등 영어", "중학 영어", "고등 영어")) {
+            for (String area : List.of("단어", "문법", "독해", "듣기")) {
+                ensurePath(List.of("영어", level, area));
+            }
+        }
+    }
+
+    private void cleanupUnexpectedEnglishCategories() {
+        int deleted = 0;
+        List<Long> unexpectedCategoryIds = categoryRepository.findAll().stream()
+                .filter(category -> {
+                    String path = Question.categoryPath(category);
+                    return path.startsWith("영어 > ") && !ALLOWED_ENGLISH_CATEGORY_PATHS.contains(path);
+                })
+                .map(Category::getId)
+                .toList();
+        if (!unexpectedCategoryIds.isEmpty()) {
+            deleteQuestionsInCategories(unexpectedCategoryIds);
+        }
+
+        boolean changed;
+        do {
+            changed = false;
+            List<Category> categories = categoryRepository.findAll();
+            for (Category category : categories) {
+                String path = Question.categoryPath(category);
+                if (!path.startsWith("영어 > ") || ALLOWED_ENGLISH_CATEGORY_PATHS.contains(path)) {
+                    continue;
+                }
+                if (categoryRepository.existsByParent_Id(category.getId()) || questionRepository.existsByCategory_Id(category.getId())) {
+                    continue;
+                }
+                categoryRepository.delete(category);
+                categoryRepository.flush();
+                deleted++;
+                changed = true;
+                break;
+            }
+        } while (changed);
+        if (deleted > 0) {
+            log.info("Cleaned up {} unexpected English question categories", deleted);
+        }
+    }
+
+    private void deleteQuestionsInCategories(List<Long> categoryIds) {
+        String categoryPlaceholders = placeholders(categoryIds.size());
+        List<String> questionIds = jdbcTemplate.queryForList(
+                "SELECT id FROM questions WHERE category_id IN (" + categoryPlaceholders + ")",
+                String.class,
+                categoryIds.toArray()
+        );
+        if (questionIds.isEmpty()) {
+            return;
+        }
+
+        String questionPlaceholders = placeholders(questionIds.size());
+        Object[] args = questionIds.toArray();
+        int attemptAnswers = jdbcTemplate.update(
+                "DELETE FROM attempt_answers WHERE question_id IN (" + questionPlaceholders + ")",
+                args
+        );
+        int examItems = jdbcTemplate.update(
+                "DELETE FROM exam_items WHERE question_id IN (" + questionPlaceholders + ")",
+                args
+        );
+        jdbcTemplate.update(
+                "DELETE FROM question_choices WHERE question_id IN (" + questionPlaceholders + ")",
+                args
+        );
+        jdbcTemplate.update(
+                "DELETE FROM question_keywords WHERE question_id IN (" + questionPlaceholders + ")",
+                args
+        );
+        int questions = jdbcTemplate.update(
+                "DELETE FROM questions WHERE id IN (" + questionPlaceholders + ")",
+                args
+        );
+        log.info(
+                "Deleted {} questions, {} exam items, and {} attempt answers from unexpected English categories",
+                questions,
+                examItems,
+                attemptAnswers
+        );
+    }
+
+    private String placeholders(int count) {
+        return String.join(",", java.util.Collections.nCopies(count, "?"));
+    }
+
     private boolean isReadingQuestion(Question question) {
         String path = Question.categoryPath(question.getCategory());
         return path.contains("내용일치")
                 || path.contains("문장해석")
                 || path.contains("어휘추론")
                 || path.contains("빈칸")
-                || path.contains("독해");
+                || path.contains("독해")
+                || path.contains("듣기");
     }
 
     private SplitQuestion splitQuestion(String value) {

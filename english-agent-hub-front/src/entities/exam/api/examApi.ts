@@ -24,6 +24,8 @@ export type ExamResponse = {
   description: string | null;
   subjectId: number | null;
   subjectName: string | null;
+  examCategoryId: number | null;
+  examCategoryName: string | null;
   status: ExamStatus;
   timeLimitMinutes: number | null;
   totalPoints: number;
@@ -40,7 +42,21 @@ export type ExamUpsertRequest = {
   description?: string;
   timeLimitMinutes?: number | null;
   subjectId?: number | null;
+  examCategoryId?: number | null;
   items: { questionId: string; points: number }[];
+};
+
+export type ExamCategoryRecord = {
+  id: number;
+  parentId: number | null;
+  name: string;
+  displayOrder: number;
+  examCount: number;
+};
+
+export type ExamCategoryNode = ExamCategoryRecord & {
+  children: ExamCategoryNode[];
+  subtreeCount: number;
 };
 
 export type TakeItem = {
@@ -121,6 +137,50 @@ export const examApi = {
   publish: (id: string) => api.post<ExamResponse>(`/api/exams/${id}/publish`).then((r) => r.data),
   close: (id: string) => api.post<ExamResponse>(`/api/exams/${id}/close`).then((r) => r.data),
   delete: (id: string) => api.delete<void>(`/api/exams/${id}`).then(() => undefined),
+};
+
+export const examCategoryApi = {
+  list: () => api.get<ExamCategoryRecord[]>("/api/exam-categories").then((r) => r.data),
+};
+
+export const buildExamCategoryTree = (flat: ExamCategoryRecord[]): ExamCategoryNode[] => {
+  const map = new Map<number, ExamCategoryNode>();
+  flat.forEach((record) => map.set(record.id, { ...record, children: [], subtreeCount: 0 }));
+
+  const roots: ExamCategoryNode[] = [];
+  map.forEach((node) => {
+    if (node.parentId === null || !map.has(node.parentId)) {
+      roots.push(node);
+    } else {
+      map.get(node.parentId)!.children.push(node);
+    }
+  });
+
+  const fill = (node: ExamCategoryNode): number => {
+    node.subtreeCount = node.examCount + node.children.reduce((sum, child) => sum + fill(child), 0);
+    return node.subtreeCount;
+  };
+  roots.forEach(fill);
+
+  const sortRec = (nodes: ExamCategoryNode[]) => {
+    nodes.sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id);
+    nodes.forEach((node) => sortRec(node.children));
+  };
+  sortRec(roots);
+  return roots;
+};
+
+export const flattenExamCategoryTree = (
+  roots: ExamCategoryNode[],
+): { id: number; depth: number; name: string; pathLabel: string }[] => {
+  const out: { id: number; depth: number; name: string; pathLabel: string }[] = [];
+  const walk = (node: ExamCategoryNode, depth: number, path: string[]) => {
+    const current = [...path, node.name];
+    out.push({ id: node.id, depth, name: node.name, pathLabel: current.join(" > ") });
+    node.children.forEach((child) => walk(child, depth + 1, current));
+  };
+  roots.forEach((root) => walk(root, 0, []));
+  return out;
 };
 
 export const attemptApi = {

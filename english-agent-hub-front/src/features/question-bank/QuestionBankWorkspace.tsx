@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -14,6 +14,7 @@ import {
   Filter,
   FolderPlus,
   FolderTree,
+  Play,
   LayoutGrid,
   Layers,
   Loader2,
@@ -22,12 +23,15 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Square,
   Table2,
   Trash2,
+  Volume2,
   X,
 } from "lucide-react";
 import { SearchInput } from "@/shared/ui/SearchInput";
 import { SelectField } from "@/shared/ui/SelectField";
+import { agentChatApi } from "@/entities/agent/api/agentChatApi";
 import {
   buildCategoryTree,
   categoryApi,
@@ -222,6 +226,9 @@ const readingQuestionTemplates: ReadingQuestionTemplate[] = [
 const questionTypeLabel = (value: QuestionType) =>
   value === "MULTIPLE_CHOICE" ? "객관식" : "주관식";
 
+const isListeningQuestion = (question: QuestionResponse) =>
+  question.listening || question.area === "듣기" || question.categoryPath.some((part) => part.includes("듣기"));
+
 const difficultyLabel = (value: QuestionDifficulty) =>
   difficulties.find((difficulty) => difficulty.value === value)?.label ?? value;
 
@@ -275,6 +282,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [embedTarget, setEmbedTarget] = useState<QuestionResponse | null>(null);
   const [similarTarget, setSimilarTarget] = useState<QuestionResponse | null>(null);
+  const [listeningTarget, setListeningTarget] = useState<QuestionResponse | null>(null);
 
   const { data: categories = [], isLoading: isLoadingCategories } = useQuery({
     queryKey: ["question-categories"],
@@ -1030,6 +1038,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                       question={question}
                       onEdit={() => handleEdit(question)}
                       onEmbed={() => setEmbedTarget(question)}
+                      onListen={() => setListeningTarget(question)}
                       onShowSimilar={() => setSimilarTarget(question)}
                       onGenerateSimilar={() => openTemplateDialog(question)}
                       onDelete={async () => {
@@ -1074,6 +1083,10 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
         results={similarList}
         loading={isFetchingSimilar}
         onClose={() => setSimilarTarget(null)}
+      />
+      <ListeningDialog
+        question={listeningTarget}
+        onClose={() => setListeningTarget(null)}
       />
       {confirmDialog}
     </main>
@@ -1747,6 +1760,7 @@ function QuestionItem({
   question,
   onEdit,
   onEmbed,
+  onListen,
   onShowSimilar,
   onGenerateSimilar,
   onDelete,
@@ -1754,6 +1768,7 @@ function QuestionItem({
   question: QuestionResponse;
   onEdit: () => void;
   onEmbed: () => void;
+  onListen: () => void;
   onShowSimilar: () => void;
   onGenerateSimilar: () => void;
   onDelete: () => void;
@@ -1761,6 +1776,7 @@ function QuestionItem({
   const embedButtonLabel = question.embeddingStatus === "COMPLETED" ? "재임베딩" : "임베딩";
   const canShowSimilar = question.embeddingStatus === "COMPLETED";
   const readableQuestion = splitReadingQuestion(question);
+  const listening = isListeningQuestion(question);
 
   return (
     <article className="rounded-lg border border-border bg-background p-4">
@@ -1779,6 +1795,17 @@ function QuestionItem({
           <h3 className="mt-3 text-base font-bold leading-7">{readableQuestion.prompt}</h3>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {listening && readableQuestion.passage && (
+            <button
+              type="button"
+              onClick={onListen}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
+              title="듣기 스크립트를 읽어줍니다."
+            >
+              <Volume2 className="h-4 w-4" />
+              듣기
+            </button>
+          )}
           <button
             type="button"
             onClick={onEmbed}
@@ -1829,7 +1856,9 @@ function QuestionItem({
 
       {readableQuestion.passage && (
         <div className="mt-3 rounded-md border border-border bg-muted/25 px-3 py-2.5">
-          <p className="text-[11px] font-bold text-muted-foreground">지문</p>
+          <p className="text-[11px] font-bold text-muted-foreground">
+            {listening ? "듣기 스크립트" : "지문"}
+          </p>
           <p className="mt-1.5 whitespace-pre-line text-sm font-medium leading-7 text-foreground">
             {readableQuestion.passage}
           </p>
@@ -1874,8 +1903,245 @@ function QuestionItem({
         </div>
       </div>
 
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">{question.explanation}</p>
+      <div className="mt-3 rounded-md border border-border bg-background px-3 py-2.5">
+        <p className="text-xs font-bold text-muted-foreground">해설</p>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">{question.explanation}</p>
+      </div>
     </article>
+  );
+}
+
+type ListeningSegment = {
+  speaker: string | null;
+  text: string;
+};
+
+function splitListeningSegments(value: string): ListeningSegment[] {
+  return value
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .map((line) => {
+      const match = line.match(/^([^:：]{1,24})[:：]\s*(.+)$/);
+      if (!match) return { speaker: null, text: line };
+      return { speaker: match[1].trim(), text: match[2].trim() };
+    })
+    .filter((segment) => segment.text);
+}
+
+function voiceForSpeaker(speaker: string | null, speakerIndex: number) {
+  const lower = (speaker ?? "").toLowerCase();
+  if (lower.includes("girl") || lower.includes("woman")) return "nova";
+  if (lower.includes("boy") || lower.includes("man")) return "alloy";
+  return speakerIndex % 2 === 0 ? "alloy" : "nova";
+}
+
+function speakerAlign(speaker: string | null, speakerIndex: number) {
+  const lower = (speaker ?? "").toLowerCase();
+  if (lower.includes("girl") || lower.includes("woman")) return "right";
+  if (lower.includes("boy") || lower.includes("man")) return "left";
+  return speakerIndex % 2 === 0 ? "left" : "right";
+}
+
+function speakerDisplayName(speaker: string | null) {
+  if (!speaker) return "Narrator";
+  return speaker;
+}
+
+function ListeningDialog({
+  question,
+  onClose,
+}: {
+  question: QuestionResponse | null;
+  onClose: () => void;
+}) {
+  const readableQuestion = question ? splitReadingQuestion(question) : null;
+  const segments = useMemo(
+    () => splitListeningSegments(readableQuestion?.passage ?? ""),
+    [readableQuestion?.passage],
+  );
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const stoppedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      stoppedRef.current = true;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  if (!question || !readableQuestion) return null;
+
+  const revokeAudioUrl = () => {
+    if (!audioUrlRef.current) return;
+    URL.revokeObjectURL(audioUrlRef.current);
+    audioUrlRef.current = null;
+  };
+
+  const stopAudio = () => {
+    stoppedRef.current = true;
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+    }
+    revokeAudioUrl();
+    setPlaying(false);
+    setLoadingAudio(false);
+    setActiveIndex(null);
+  };
+
+  const speakerKeys = Array.from(new Set(segments.map((item, i) => item.speaker ?? `speaker-${i % 2}`)));
+
+  const playSegment = async (index: number) => {
+    if (index >= segments.length) {
+      setPlaying(false);
+      setLoadingAudio(false);
+      setActiveIndex(null);
+      return;
+    }
+    if (stoppedRef.current) return;
+
+    setActiveIndex(index);
+    const segment = segments[index];
+    const speakerKey = segment.speaker ?? `speaker-${index % 2}`;
+    const speakerIndex = speakerKeys.indexOf(speakerKey);
+
+    try {
+      setLoadingAudio(true);
+      const audioBuffer = await agentChatApi.synthesizeSpeech(segment.text, voiceForSpeaker(segment.speaker, speakerIndex));
+      if (stoppedRef.current) return;
+      revokeAudioUrl();
+      const blob = new Blob([audioBuffer], { type: "audio/mpeg" });
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => playSegment(index + 1);
+      audio.onerror = () => {
+        toast.error("듣기 음성 재생에 실패했습니다.");
+        stopAudio();
+      };
+      setLoadingAudio(false);
+      await audio.play();
+    } catch {
+      toast.error("OpenAI TTS 생성에 실패했습니다.");
+      setPlaying(false);
+      setLoadingAudio(false);
+      setActiveIndex(null);
+    }
+  };
+
+  const play = () => {
+    if (segments.length === 0) return;
+    stopAudio();
+    stoppedRef.current = false;
+    setPlaying(true);
+    void playSegment(0);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/35 px-4 py-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          stopAudio();
+          onClose();
+        }
+      }}
+    >
+      <div className="w-full max-w-3xl overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b border-border bg-muted/35 px-5 py-4">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Listening
+            </p>
+            <h2 className="mt-1 text-lg font-bold tracking-tight">{readableQuestion.prompt}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{question.categoryPath.join(" > ")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              stopAudio();
+              onClose();
+            }}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={play}
+              disabled={segments.length === 0 || loadingAudio}
+              className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              <Play className="h-4 w-4" />
+              {loadingAudio ? "음성 생성 중" : playing ? "처음부터 다시 듣기" : "듣기 시작"}
+            </button>
+            <button
+              type="button"
+              onClick={stopAudio}
+              disabled={!playing && activeIndex === null}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent disabled:opacity-50"
+            >
+              <Square className="h-4 w-4" />
+              정지
+            </button>
+          </div>
+
+          <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
+            <p className="text-xs font-bold text-muted-foreground">대화 스크립트</p>
+            <div className="mt-3 space-y-3">
+              {segments.map((segment, index) => {
+                const speakerKey = segment.speaker ?? `speaker-${index % 2}`;
+                const speakerIndex = speakerKeys.indexOf(speakerKey);
+                const align = speakerAlign(segment.speaker, speakerIndex);
+                const active = activeIndex === index;
+                return (
+                  <div
+                    key={`${index}-${segment.speaker ?? "speaker"}-${segment.text}`}
+                    className={`flex ${align === "right" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className={`max-w-[78%] ${align === "right" ? "text-right" : "text-left"}`}>
+                      <p className="mb-1 text-[11px] font-bold text-muted-foreground">
+                        {speakerDisplayName(segment.speaker)}
+                      </p>
+                      <p
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium leading-7 transition-colors ${
+                          active
+                            ? "border-yellow-300 bg-yellow-200 text-foreground"
+                            : align === "right"
+                              ? "border-primary/15 bg-primary/10 text-foreground"
+                              : "border-border bg-background text-foreground"
+                        }`}
+                      >
+                        {segment.text}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2114,7 +2380,10 @@ function SimilarSummary({ question }: { question: QuestionResponse }) {
         <p className="text-[10px] font-bold uppercase text-muted-foreground">정답</p>
         <p className="mt-0.5 text-sm font-semibold">{question.answer}</p>
       </div>
-      <p className="mt-3 text-xs leading-5 text-muted-foreground">{question.explanation}</p>
+      <div className="mt-3 rounded-md border border-border bg-background px-2.5 py-2">
+        <p className="text-[10px] font-bold uppercase text-muted-foreground">해설</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{question.explanation}</p>
+      </div>
     </>
   );
 }
