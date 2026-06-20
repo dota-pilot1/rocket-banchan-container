@@ -1916,6 +1916,8 @@ type ListeningSegment = {
   text: string;
 };
 
+const listeningAudioCache = new Map<string, Promise<ArrayBuffer>>();
+
 function splitListeningSegments(value: string): ListeningSegment[] {
   return value
     .split(/\n+/)
@@ -1947,6 +1949,22 @@ function speakerDisplayName(speaker: string | null) {
   return speaker;
 }
 
+function listeningAudioCacheKey(text: string, voice: string) {
+  return `${voice}:${text}`;
+}
+
+function fetchListeningAudio(text: string, voice: string) {
+  const key = listeningAudioCacheKey(text, voice);
+  const cached = listeningAudioCache.get(key);
+  if (cached) return cached;
+  const request = agentChatApi.synthesizeSpeech(text, voice).catch((error) => {
+    listeningAudioCache.delete(key);
+    throw error;
+  });
+  listeningAudioCache.set(key, request);
+  return request;
+}
+
 function ListeningDialog({
   question,
   onClose,
@@ -1962,16 +1980,25 @@ function ListeningDialog({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [loadingAudio, setLoadingAudio] = useState(false);
+  const [prefetchingAudio, setPrefetchingAudio] = useState(false);
+  const [prefetchedCount, setPrefetchedCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const stoppedRef = useRef(false);
+  const speakerKeys = useMemo(
+    () => Array.from(new Set(segments.map((item, i) => item.speaker ?? `speaker-${i % 2}`))),
+    [segments],
+  );
 
   useEffect(() => {
     return () => {
       stoppedRef.current = true;
       if (audioRef.current) {
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
         audioRef.current.pause();
-        audioRef.current.src = "";
+        audioRef.current.removeAttribute("src");
+        audioRef.current.load();
         audioRef.current = null;
       }
       if (audioUrlRef.current) {
@@ -1981,6 +2008,30 @@ function ListeningDialog({
     };
   }, []);
 
+  useEffect(() => {
+    if (!question || segments.length === 0) return;
+    let cancelled = false;
+    setPrefetchingAudio(true);
+    setPrefetchedCount(0);
+
+    const requests = segments.map((segment, index) => {
+      const speakerKey = segment.speaker ?? `speaker-${index % 2}`;
+      const speakerIndex = speakerKeys.indexOf(speakerKey);
+      return fetchListeningAudio(segment.text, voiceForSpeaker(segment.speaker, speakerIndex)).then((buffer) => {
+        if (!cancelled) setPrefetchedCount((count) => Math.min(segments.length, count + 1));
+        return buffer;
+      });
+    });
+
+    void Promise.allSettled(requests).finally(() => {
+      if (!cancelled) setPrefetchingAudio(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [question, segments, speakerKeys]);
+
   if (!question || !readableQuestion) return null;
 
   const revokeAudioUrl = () => {
@@ -1989,20 +2040,24 @@ function ListeningDialog({
     audioUrlRef.current = null;
   };
 
+  const releaseAudioElement = (pause = true) => {
+    if (!audioRef.current) return;
+    audioRef.current.onended = null;
+    audioRef.current.onerror = null;
+    if (pause) audioRef.current.pause();
+    audioRef.current.removeAttribute("src");
+    audioRef.current.load();
+    audioRef.current = null;
+  };
+
   const stopAudio = () => {
     stoppedRef.current = true;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
-      audioRef.current = null;
-    }
+    releaseAudioElement();
     revokeAudioUrl();
     setPlaying(false);
     setLoadingAudio(false);
     setActiveIndex(null);
   };
-
-  const speakerKeys = Array.from(new Set(segments.map((item, i) => item.speaker ?? `speaker-${i % 2}`)));
 
   const playSegment = async (index: number) => {
     if (index >= segments.length) {
@@ -2020,8 +2075,9 @@ function ListeningDialog({
 
     try {
       setLoadingAudio(true);
-      const audioBuffer = await agentChatApi.synthesizeSpeech(segment.text, voiceForSpeaker(segment.speaker, speakerIndex));
+      const audioBuffer = await fetchListeningAudio(segment.text, voiceForSpeaker(segment.speaker, speakerIndex));
       if (stoppedRef.current) return;
+      releaseAudioElement(false);
       revokeAudioUrl();
       const blob = new Blob([audioBuffer], { type: "audio/mpeg" });
       const url = URL.createObjectURL(blob);
@@ -2103,6 +2159,11 @@ function ListeningDialog({
               <Square className="h-4 w-4" />
               정지
             </button>
+            {prefetchingAudio && (
+              <span className="text-xs font-semibold text-muted-foreground">
+                음성 준비 중 {prefetchedCount}/{segments.length}
+              </span>
+            )}
           </div>
 
           <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
