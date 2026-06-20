@@ -6,7 +6,7 @@ export type QuestionType = "MULTIPLE_CHOICE" | "SHORT_ANSWER";
 
 export type EmbeddingStatus = "PENDING" | "COMPLETED" | "FAILED";
 
-export type QuestionArea = "단어" | "문법" | "독해" | "듣기";
+export type QuestionArea = "어휘" | "어법" | "독해" | "듣기";
 
 export type QuestionResponse = {
   id: string;

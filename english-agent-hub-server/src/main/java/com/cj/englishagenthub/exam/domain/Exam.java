@@ -110,6 +110,35 @@ public class Exam {
         }
     }
 
+    /**
+     * 원본 시험지의 메타와 (배점·순서) 구조를 그대로 복제하되, 문항만 새 문항으로 교체한 변형본을 만든다.
+     * 항상 DRAFT로 시작한다. 표절이 아니라 "동형 시험지"가 되도록 새 문항은 외부에서 생성해 주입받는다.
+     *
+     * @param replacementQuestions 원본 문항(orderNo ASC)과 1:1로 대응하는 새 문항 목록
+     */
+    public static Exam variantOf(Exam source, User creator, List<Question> replacementQuestions) {
+        if (source.items.isEmpty()) {
+            throw new IllegalStateException("문항이 없는 시험은 변형할 수 없습니다.");
+        }
+        if (replacementQuestions.size() != source.items.size()) {
+            throw new IllegalArgumentException("변형 문항 수가 원본 문항 수와 일치해야 합니다.");
+        }
+        Exam variant = create(
+                creator,
+                source.title + " (변형본)",
+                source.description,
+                source.timeLimitMinutes,
+                source.subject,
+                source.examCategory
+        );
+        List<ItemSpec> specs = new ArrayList<>();
+        for (int i = 0; i < source.items.size(); i++) {
+            specs.add(new ItemSpec(replacementQuestions.get(i), source.items.get(i).getPoints()));
+        }
+        variant.replaceItems(specs);
+        return variant;
+    }
+
     public void publish() {
         if (status == ExamStatus.PUBLISHED) return;
         if (status == ExamStatus.CLOSED) {

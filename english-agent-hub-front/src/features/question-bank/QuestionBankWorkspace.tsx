@@ -895,8 +895,8 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
           </div>
           )}
 
-          <section className="min-w-0 rounded-lg border border-border bg-background">
-            <div className="border-b border-border px-4 py-3">
+          <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-background">
+            <div className="border-b border-question-border bg-question-surface px-4 py-3">
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[140px_1.4fr_auto] lg:items-center">
                   <SelectField
                     size="sm"
@@ -1609,10 +1609,10 @@ function CategoryTree({
   };
 
   return (
-    <aside className="self-start rounded-lg border border-border bg-background">
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+    <aside className="self-start overflow-hidden rounded-lg border border-border bg-background">
+      <div className="flex items-center justify-between border-b border-question-border bg-question-surface px-4 py-3">
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-muted-foreground" />
+          <Layers className="h-4 w-4 text-question-foreground" />
           <h2 className="text-base font-bold">분류</h2>
         </div>
         <button
@@ -1779,133 +1779,136 @@ function QuestionItem({
   const listening = isListeningQuestion(question);
 
   return (
-    <article className="rounded-lg border border-border bg-background p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <CategoryPathBadge path={question.categoryPath} />
-            <span className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
-              {difficultyLabel(question.difficulty)}
-            </span>
-            <span className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
-              {questionTypeLabel(question.questionType)}
-            </span>
-            <EmbeddingStatusBadge status={question.embeddingStatus} model={question.embeddingModel} />
+    <article className="overflow-hidden rounded-lg border border-border bg-background">
+      <div className="h-1 bg-question-accent" />
+      <div className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <CategoryPathBadge path={question.categoryPath} />
+              <span className="inline-flex items-center rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold text-muted-foreground">
+                {difficultyLabel(question.difficulty)}
+              </span>
+              <span className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-700">
+                {questionTypeLabel(question.questionType)}
+              </span>
+              <EmbeddingStatusBadge status={question.embeddingStatus} model={question.embeddingModel} />
+            </div>
+            <h3 className="mt-3 text-base font-bold leading-7">{readableQuestion.prompt}</h3>
           </div>
-          <h3 className="mt-3 text-base font-bold leading-7">{readableQuestion.prompt}</h3>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {listening && readableQuestion.passage && (
+          <div className="flex shrink-0 items-center gap-2">
+            {listening && readableQuestion.passage && (
+              <button
+                type="button"
+                onClick={onListen}
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
+                title="듣기 스크립트를 읽어줍니다."
+              >
+                <Volume2 className="h-4 w-4" />
+                듣기
+              </button>
+            )}
             <button
               type="button"
-              onClick={onListen}
+              onClick={onEmbed}
               className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
-              title="듣기 스크립트를 읽어줍니다."
             >
-              <Volume2 className="h-4 w-4" />
-              듣기
+              <Sparkles className="h-4 w-4" />
+              {embedButtonLabel}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onEmbed}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
-          >
-            <Sparkles className="h-4 w-4" />
-            {embedButtonLabel}
-          </button>
-          <button
-            type="button"
-            onClick={onShowSimilar}
-            disabled={!canShowSimilar}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-            title={canShowSimilar ? "유사 문제 조회" : "임베딩 완료된 문제만 조회 가능"}
-          >
-            <Search className="h-4 w-4" />
-            유사 문제
-          </button>
-          <button
-            type="button"
-            onClick={onGenerateSimilar}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
-            title="이 문제를 기준으로 독해 유사 문제 출제"
-          >
-            <FileText className="h-4 w-4" />
-            유사 출제
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
-            aria-label="문제 수정"
-            title="문제 수정"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-destructive hover:text-white"
-            aria-label="문제 삭제"
-            title="문제 삭제"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {readableQuestion.passage && (
-        <div className="mt-3 rounded-md border border-border bg-muted/25 px-3 py-2.5">
-          <p className="text-[11px] font-bold text-muted-foreground">
-            {listening ? "듣기 스크립트" : "지문"}
-          </p>
-          <p className="mt-1.5 whitespace-pre-line text-sm font-medium leading-7 text-foreground">
-            {readableQuestion.passage}
-          </p>
-        </div>
-      )}
-
-      {question.choices.length > 0 && (
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          {question.choices.map((choice, index) => {
-            const isAnswer = choice === question.answer;
-            return (
-              <div
-                key={`${choice}-${index}`}
-                className={`flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm ${
-                  isAnswer
-                    ? "border-emerald-300 bg-emerald-50 font-semibold text-emerald-800"
-                    : "border-border bg-muted/35"
-                }`}
-              >
-                {isAnswer && <Check className="h-3.5 w-3.5 shrink-0" />}
-                {index + 1}. {choice}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-md border border-border bg-muted/25 p-3">
-          <p className="text-xs font-bold text-muted-foreground">정답</p>
-          <p className="mt-1 text-sm font-semibold">{question.answer}</p>
-        </div>
-        <div className="rounded-md border border-border bg-muted/25 p-3">
-          <p className="text-xs font-bold text-muted-foreground">키워드</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {question.keywords.map((keyword) => (
-              <span key={keyword} className="rounded-md bg-background px-2 py-1 text-xs font-semibold">
-                {keyword}
-              </span>
-            ))}
+            <button
+              type="button"
+              onClick={onShowSimilar}
+              disabled={!canShowSimilar}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+              title={canShowSimilar ? "유사 문제 조회" : "임베딩 완료된 문제만 조회 가능"}
+            >
+              <Search className="h-4 w-4" />
+              유사 문제
+            </button>
+            <button
+              type="button"
+              onClick={onGenerateSimilar}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
+              title="이 문제를 기준으로 독해 유사 문제 출제"
+            >
+              <FileText className="h-4 w-4" />
+              유사 출제
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label="문제 수정"
+              title="문제 수정"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-destructive hover:text-white"
+              aria-label="문제 삭제"
+              title="문제 삭제"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      </div>
 
-      <div className="mt-3 rounded-md border border-border bg-background px-3 py-2.5">
-        <p className="text-xs font-bold text-muted-foreground">해설</p>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">{question.explanation}</p>
+        {readableQuestion.passage && (
+          <div className="mt-3 overflow-hidden rounded-md border border-question-border bg-background">
+            <p className="border-b border-question-border bg-question-surface px-3 py-2 text-[11px] font-bold text-question-foreground">
+              {listening ? "듣기 스크립트" : "지문"}
+            </p>
+            <p className="whitespace-pre-line px-3 py-2.5 text-sm font-medium leading-7 text-foreground">
+              {readableQuestion.passage}
+            </p>
+          </div>
+        )}
+
+        {question.choices.length > 0 && (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {question.choices.map((choice, index) => {
+              const isAnswer = choice === question.answer;
+              return (
+                <div
+                  key={`${choice}-${index}`}
+                  className={`flex items-center gap-1.5 rounded-md border px-3 py-2 text-sm ${
+                    isAnswer
+                      ? "border-emerald-300 bg-emerald-50 font-semibold text-emerald-800"
+                      : "border-border bg-muted/35"
+                  }`}
+                >
+                  {isAnswer && <Check className="h-3.5 w-3.5 shrink-0" />}
+                  {index + 1}. {choice}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-md border border-question-border bg-background">
+            <p className="border-b border-question-border bg-question-surface px-3 py-2 text-xs font-bold text-question-foreground">정답</p>
+            <p className="px-3 py-2.5 text-sm font-semibold">{question.answer}</p>
+          </div>
+          <div className="overflow-hidden rounded-md border border-question-border bg-background">
+            <p className="border-b border-question-border bg-question-surface px-3 py-2 text-xs font-bold text-question-foreground">키워드</p>
+            <div className="flex flex-wrap gap-1.5 px-3 py-2.5">
+              {question.keywords.map((keyword) => (
+                <span key={keyword} className="rounded-md bg-question-surface-soft px-2 py-1 text-xs font-semibold text-question-foreground">
+                  {keyword}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 overflow-hidden rounded-md border border-question-border bg-background">
+          <p className="border-b border-question-border bg-question-surface px-3 py-2 text-xs font-bold text-question-foreground">해설</p>
+          <p className="px-3 py-2.5 text-sm leading-6 text-muted-foreground">{question.explanation}</p>
+        </div>
       </div>
     </article>
   );

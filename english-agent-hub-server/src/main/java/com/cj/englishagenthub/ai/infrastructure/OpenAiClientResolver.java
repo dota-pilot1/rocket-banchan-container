@@ -87,6 +87,26 @@ public class OpenAiClientResolver {
         return systemChatClientBuilderProvider.getIfAvailable();
     }
 
+    /**
+     * 임의의 OpenAI 호환 엔드포인트(예: Gemini의 OpenAI 호환 레이어, DeepSeek)용 ChatClient.Builder.
+     * base URL과 키를 직접 주입한다.
+     */
+    public ChatClient.Builder chatClientFor(String apiKey, String baseUrl) {
+        OpenAIClient sdkClient = OpenAIOkHttpClient.builder()
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
+                .build();
+        OpenAIClientAsync sdkClientAsync = OpenAIOkHttpClientAsync.builder()
+                .apiKey(apiKey)
+                .baseUrl(baseUrl)
+                .build();
+        OpenAiChatModel model = OpenAiChatModel.builder()
+                .openAiClient(sdkClient)
+                .openAiClientAsync(sdkClientAsync)
+                .build();
+        return ChatClient.builder(model);
+    }
+
     private Long currentUserIdOrNull() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) return null;

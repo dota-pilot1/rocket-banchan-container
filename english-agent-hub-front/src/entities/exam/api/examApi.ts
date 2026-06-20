@@ -134,6 +134,8 @@ export const examApi = {
     api.post<ExamResponse>("/api/exams", body).then((r) => r.data),
   update: (id: string, body: ExamUpsertRequest) =>
     api.put<ExamResponse>(`/api/exams/${id}`, body).then((r) => r.data),
+  generateVariant: (id: string) =>
+    api.post<ExamResponse>(`/api/exams/${id}/generate-variant`).then((r) => r.data),
   publish: (id: string) => api.post<ExamResponse>(`/api/exams/${id}/publish`).then((r) => r.data),
   close: (id: string) => api.post<ExamResponse>(`/api/exams/${id}/close`).then((r) => r.data),
   delete: (id: string) => api.delete<void>(`/api/exams/${id}`).then(() => undefined),

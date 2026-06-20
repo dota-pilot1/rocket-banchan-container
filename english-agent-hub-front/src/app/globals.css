@@ -34,6 +34,11 @@
     --color-secondary: var(--secondary);
     --color-primary-foreground: var(--primary-foreground);
     --color-primary: var(--primary);
+    --color-question-accent: var(--question-accent);
+    --color-question-border: var(--question-border);
+    --color-question-foreground: var(--question-foreground);
+    --color-question-surface: var(--question-surface);
+    --color-question-surface-soft: var(--question-surface-soft);
     --color-popover-foreground: var(--popover-foreground);
     --color-popover: var(--popover);
     --color-card-foreground: var(--card-foreground);
@@ -80,6 +85,11 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --question-accent: oklch(0.70 0.14 230);
+    --question-surface: color-mix(in oklch, var(--question-accent) 6%, var(--background));
+    --question-surface-soft: color-mix(in oklch, var(--question-accent) 3%, var(--background));
+    --question-border: color-mix(in oklch, var(--question-accent) 22%, var(--border));
+    --question-foreground: color-mix(in oklch, var(--question-accent) 62%, var(--foreground));
 }
 
 /* ──────────────────────────────────────────────────────────────
@@ -88,6 +98,7 @@
    Applies in both light and dark mode.
    ────────────────────────────────────────────────────────────── */
 :root[data-theme="rose"] {
+    --question-accent: oklch(0.66 0.18 10);
     --primary: oklch(0.66 0.18 10);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.66 0.18 10);
@@ -108,6 +119,7 @@
 }
 
 :root[data-theme="amber"] {
+    --question-accent: oklch(0.74 0.15 75);
     --primary: oklch(0.74 0.15 75);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.74 0.15 75);
@@ -128,6 +140,7 @@
 }
 
 :root[data-theme="mint"] {
+    --question-accent: oklch(0.70 0.12 225);
     --primary: oklch(0.70 0.13 170);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.70 0.13 170);
@@ -148,6 +161,7 @@
 }
 
 :root[data-theme="lavender"] {
+    --question-accent: oklch(0.66 0.15 300);
     --primary: oklch(0.66 0.15 300);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.66 0.15 300);
@@ -168,6 +182,7 @@
 }
 
 :root[data-theme="peach"] {
+    --question-accent: oklch(0.72 0.14 55);
     --primary: oklch(0.72 0.14 55);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.72 0.14 55);
@@ -188,6 +203,7 @@
 }
 
 :root[data-theme="sky"] {
+    --question-accent: oklch(0.70 0.14 230);
     --primary: oklch(0.70 0.14 230);
     --primary-foreground: oklch(0.99 0 0);
     --ring: oklch(0.70 0.14 230);

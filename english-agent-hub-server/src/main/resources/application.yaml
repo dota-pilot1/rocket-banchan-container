@@ -42,6 +42,12 @@ spring:
         options:
           model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
 
+gemini:
+  # Google AI Studio 키(AIza...). OpenAI 호환 레이어로 호출한다. 비우면 추출은 OpenAI로 폴백.
+  api-key: ${GEMINI_API_KEY:}
+  base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+  model: ${GEMINI_MODEL:gemini-2.5-flash}
+
 openai:
   translation:
     model: ${OPENAI_TRANSLATION_MODEL:gpt-5-nano}

@@ -97,6 +97,149 @@ public class QuestionGenerationService {
         return generated;
     }
 
+    /**
+     * 출처 문항 1개와 유형(객관식/주관식)·난이도·측정 능력이 같은 새 문항 1개를 생성한다.
+     * reading 템플릿에 묶이지 않는 범용 버전으로, 시험지 통째 변형(ExamVariant)에서 사용한다.
+     * 원문을 그대로 베끼지 않도록 프롬프트와 검증에서 강제한다.
+     */
+    @Transactional(readOnly = true)
+    public QuestionUpsertRequest generateOneSimilar(Question source) {
+        if (!openAiClientResolver.hasUsableKey()) {
+            throw new BusinessException(ErrorCode.OPENAI_NOT_CONFIGURED);
+        }
+        ChatClient.Builder builder = openAiClientResolver.resolveChatClientBuilder();
+        if (builder == null) {
+            throw new BusinessException(ErrorCode.OPENAI_NOT_CONFIGURED);
+        }
+
+        boolean isMultipleChoice = source.getQuestionType() == QuestionType.MULTIPLE_CHOICE;
+        int choiceCount = isMultipleChoice ? Math.max(2, source.getChoices().size()) : 0;
+        boolean hasPassage = StringUtils.hasText(source.getPassage());
+
+        String content = builder.build()
+                .prompt()
+                .options(OpenAiChatOptions.builder()
+                        .model(generationModel)
+                        .reasoningEffort("minimal")
+                        .verbosity("low")
+                        .maxCompletionTokens(2500))
+                .system(genericSystemPrompt())
+                .user(genericUserPrompt(source, isMultipleChoice, hasPassage, choiceCount))
+                .call()
+                .content();
+
+        GeneratedQuestionList parsed = parse(content);
+        if (parsed == null || parsed.questions() == null || parsed.questions().isEmpty()) {
+            throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+        }
+        return toGenericUpsert(parsed.questions().get(0), source, isMultipleChoice, hasPassage, choiceCount);
+    }
+
+    private QuestionUpsertRequest toGenericUpsert(
+            GeneratedQuestion item,
+            Question source,
+            boolean isMultipleChoice,
+            boolean hasPassage,
+            int choiceCount
+    ) {
+        String question = item.prompt();
+        if (!StringUtils.hasText(question)) {
+            throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+        }
+        String passage = hasPassage ? item.readingPassage() : null;
+        String explanation = StringUtils.hasText(item.explanation())
+                ? item.explanation().trim()
+                : "해설은 검수 단계에서 입력하세요.";
+        List<String> keywords = normalize(item.keywords());
+        Long categoryId = source.getCategory().getId();
+        QuestionDifficulty difficulty = source.getDifficulty();
+
+        if (isMultipleChoice) {
+            List<String> choices = fitChoices(normalize(item.choices()), safe(item.answer()), choiceCount);
+            String answer = safe(item.answer());
+            if (choices.size() != choiceCount || !choices.contains(answer)) {
+                throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+            }
+            return new QuestionUpsertRequest(
+                    QuestionType.MULTIPLE_CHOICE, categoryId, difficulty,
+                    question, passage, choices, answer, explanation, keywords, null
+            );
+        }
+
+        String answer = safe(item.answer());
+        if (!StringUtils.hasText(answer)) {
+            throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+        }
+        return new QuestionUpsertRequest(
+                QuestionType.SHORT_ANSWER, categoryId, difficulty,
+                question, passage, List.of(), answer, explanation, keywords, null
+        );
+    }
+
+    private String genericSystemPrompt() {
+        return """
+                You generate ONE new English exam question for Korean learners that is similar to a source question
+                in its tested skill, question type, and difficulty — but is NOT a copy of it.
+                Return only valid JSON. Do not wrap the JSON in markdown.
+                JSON schema:
+                {
+                  "questions": [
+                    {
+                      "question": "Korean question prompt (and English material such as a word or sentence when the source has it)",
+                      "passage": "English reading passage, or empty string if the source has none",
+                      "choices": ["choice1", "choice2", "..."],
+                      "answer": "one exact value from choices (multiple choice) or the correct short answer",
+                      "explanation": "brief Korean explanation",
+                      "keywords": ["영어", "..."]
+                    }
+                  ]
+                }
+                """;
+    }
+
+    private String genericUserPrompt(Question source, boolean isMultipleChoice, boolean hasPassage, int choiceCount) {
+        return """
+                Generate ONE new question similar to the source.
+
+                Source:
+                type: %s
+                category: %s
+                difficulty: %s
+                question: %s
+                passage: %s
+                choices: %s
+                answer: %s
+                keywords: %s
+
+                Constraints:
+                - Keep the same question type (%s), category, and difficulty (%s).
+                - Keep the SAME tested skill (e.g. vocabulary meaning, grammar point, reading inference).
+                - Do NOT copy the source question, passage, choices, or answer verbatim. Change the concrete word/sentence/topic.
+                %s
+                %s
+                - Put the Korean prompt (and any English material) in "question".
+                - Write the explanation in Korean.
+                - Make the new question clearly answerable and unambiguous.
+                """.formatted(
+                source.getQuestionType(),
+                Question.categoryPath(source.getCategory()),
+                source.getDifficulty(),
+                safe(source.getQuestion()),
+                hasPassage ? safe(source.getPassage()) : "(none)",
+                isMultipleChoice ? normalize(source.getChoices()) : "(none)",
+                safe(source.getAnswer()),
+                normalize(source.getKeywords()),
+                source.getQuestionType(),
+                source.getDifficulty(),
+                isMultipleChoice
+                        ? "- Provide exactly " + choiceCount + " unique choices; the answer must be exactly one of them; distractors must be newly written and plausible."
+                        : "- This is a short-answer question: leave \"choices\" empty and give the correct answer in \"answer\".",
+                hasPassage
+                        ? "- Provide a NEW English passage of similar length and style in \"passage\"."
+                        : "- Leave \"passage\" empty."
+        );
+    }
+
     private QuestionUpsertRequest toUpsertRequest(
             GeneratedQuestion item,
             SourceQuestion source,

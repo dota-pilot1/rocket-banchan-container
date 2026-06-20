@@ -1,0 +1,290 @@
+package com.cj.englishagenthub.question.application;
+
+import com.cj.englishagenthub.ai.infrastructure.OpenAiClientResolver;
+import com.cj.englishagenthub.common.exception.BusinessException;
+import com.cj.englishagenthub.common.exception.ErrorCode;
+import com.cj.englishagenthub.question.presentation.dto.ExtractedQuestionResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 시험지 PDF에서 독해(읽기) 문항만 추출한다.
+ * - Gemini 키가 있으면: 1M 컨텍스트로 시험지 전체를 단일 호출(안정·저렴). 권장.
+ * - 없으면: OpenAI로 페이지 단위 청크 추출(출력 잘림 방지)로 폴백.
+ */
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class QuestionExtractionService {
+
+    private final OpenAiClientResolver openAiClientResolver;
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${openai.question-generation.model:${openai.translation.model:gpt-5-mini}}")
+    private String openAiModel;
+
+    @Value("${gemini.api-key:}")
+    private String geminiApiKey;
+
+    @Value("${gemini.base-url:https://generativelanguage.googleapis.com/v1beta/openai}")
+    private String geminiBaseUrl;
+
+    @Value("${gemini.model:gemini-2.5-flash}")
+    private String geminiModel;
+
+    public List<ExtractedQuestionResponse> extractReadingQuestions(MultipartFile file) {
+        List<String> pages = extractPdfPages(file);
+        if (pages.stream().noneMatch(StringUtils::hasText)) {
+            throw new BusinessException(ErrorCode.EXTRACTION_EMPTY_TEXT);
+        }
+
+        List<ExtractedQuestion> merged = StringUtils.hasText(geminiApiKey)
+                ? extractWithGemini(pages)
+                : extractWithOpenAiPerPage(pages);
+
+        List<ExtractedQuestionResponse> result = merged.stream()
+                .map(q -> new ExtractedQuestionResponse(
+                        q.number(),
+                        q.prompt() == null ? "" : q.prompt().trim(),
+                        q.passage() == null ? null : q.passage().trim(),
+                        normalize(q.choices()),
+                        "독해"
+                ))
+                .toList();
+        if (result.isEmpty()) {
+            throw new BusinessException(ErrorCode.EXTRACTION_NO_READING);
+        }
+
+        List<Integer> numbers = result.stream().map(ExtractedQuestionResponse::number).filter(n -> n != null).toList();
+        log.info("Extracted {} reading questions from {} via {} — numbers: {}",
+                result.size(), file.getOriginalFilename(),
+                StringUtils.hasText(geminiApiKey) ? "gemini" : "openai", numbers);
+        return result;
+    }
+
+    // ── Gemini: 시험지 전체 단일 호출 ──────────────────────────────────────
+    private List<ExtractedQuestion> extractWithGemini(List<String> pages) {
+        StringBuilder full = new StringBuilder();
+        for (int i = 0; i < pages.size(); i++) {
+            if (!StringUtils.hasText(pages.get(i))) continue;
+            full.append("\n\n===== PAGE ").append(i + 1).append(" =====\n").append(pages.get(i));
+        }
+        ChatClient client = openAiClientResolver.chatClientFor(geminiApiKey, geminiBaseUrl).build();
+        String content;
+        try {
+            content = client.prompt()
+                    .options(OpenAiChatOptions.builder()
+                            .model(geminiModel)
+                            .maxCompletionTokens(32000))
+                    .system(wholeExamSystemPrompt())
+                    .user(wholeExamUserPrompt(full.toString()))
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.warn("Gemini extraction call failed: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+        }
+        ExtractedList parsed = parseQuiet(content, 0);
+        if (parsed == null || parsed.questions() == null) {
+            return List.of();
+        }
+        return dedup(parsed.questions());
+    }
+
+    // ── OpenAI: 페이지 단위 청크 추출(폴백) ─────────────────────────────────
+    private List<ExtractedQuestion> extractWithOpenAiPerPage(List<String> pages) {
+        if (!openAiClientResolver.hasUsableKey()) {
+            throw new BusinessException(ErrorCode.OPENAI_NOT_CONFIGURED);
+        }
+        ChatClient.Builder builder = openAiClientResolver.resolveChatClientBuilder();
+        if (builder == null) {
+            throw new BusinessException(ErrorCode.OPENAI_NOT_CONFIGURED);
+        }
+        ChatClient client = builder.build();
+
+        List<ExtractedQuestion> all = new ArrayList<>();
+        for (int i = 0; i < pages.size(); i++) {
+            String pageText = pages.get(i);
+            if (!StringUtils.hasText(pageText)) continue;
+            String content;
+            try {
+                content = client.prompt()
+                        .options(OpenAiChatOptions.builder()
+                                .model(openAiModel)
+                                .reasoningEffort("low")
+                                .maxCompletionTokens(8000))
+                        .system(pageSystemPrompt())
+                        .user(pageUserPrompt(pageText, i + 1))
+                        .call()
+                        .content();
+            } catch (Exception e) {
+                log.warn("OpenAI extraction failed on page {}: {}", i + 1, e.getMessage());
+                continue;
+            }
+            ExtractedList parsed = parseQuiet(content, i + 1);
+            if (parsed != null && parsed.questions() != null) {
+                all.addAll(parsed.questions());
+            }
+        }
+        return dedup(all);
+    }
+
+    /** 사용 가능 문항만, 번호로 dedup(먼저 본 것 우선), 번호 오름차순(번호 없는 건 뒤). */
+    private List<ExtractedQuestion> dedup(List<ExtractedQuestion> questions) {
+        Map<Integer, ExtractedQuestion> byNumber = new LinkedHashMap<>();
+        List<ExtractedQuestion> withoutNumber = new ArrayList<>();
+        for (ExtractedQuestion q : questions) {
+            if (!isUsable(q)) continue;
+            if (q.number() != null) {
+                byNumber.putIfAbsent(q.number(), q);
+            } else {
+                withoutNumber.add(q);
+            }
+        }
+        List<ExtractedQuestion> merged = new ArrayList<>(byNumber.values());
+        merged.addAll(withoutNumber);
+        merged.sort(Comparator.comparing(q -> q.number() == null ? Integer.MAX_VALUE : q.number()));
+        return merged;
+    }
+
+    /** 페이지별 텍스트. 인덱스 = 0-based 페이지. */
+    private List<String> extractPdfPages(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(ErrorCode.EXTRACTION_EMPTY_TEXT);
+        }
+        try (PDDocument document = Loader.loadPDF(file.getBytes())) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            stripper.setSortByPosition(true);
+            int pageCount = document.getNumberOfPages();
+            List<String> pages = new ArrayList<>(pageCount);
+            for (int p = 1; p <= pageCount; p++) {
+                stripper.setStartPage(p);
+                stripper.setEndPage(p);
+                pages.add(stripper.getText(document));
+            }
+            return pages;
+        } catch (IOException e) {
+            log.warn("Failed to read PDF text from {}", file.getOriginalFilename(), e);
+            throw new BusinessException(ErrorCode.EXTRACTION_PDF_READ_FAILED);
+        }
+    }
+
+    private boolean isUsable(ExtractedQuestion q) {
+        return StringUtils.hasText(q.prompt())
+                && q.choices() != null
+                && q.choices().stream().filter(StringUtils::hasText).count() >= 2;
+    }
+
+    private String wholeExamSystemPrompt() {
+        return """
+                You extract reading-comprehension questions from a full Korean high-school English exam (수능/모의고사) given as raw text across several pages.
+
+                CRITICAL — completeness:
+                - Extract EVERY reading question, from the first reading question through the LAST one on the paper. Do not skip any.
+                - The listening section comes first; the exam states its range (e.g. "1번부터 17번까지는 듣고 답하는 문제입니다"). EXCLUDE only those listening questions. Everything after is reading — include all of it.
+                - Reading types include ALL of: 목적/심경/주장/밑줄의미/요지/주제/제목/내용일치/안내문/어법/어휘/빈칸추론/무관한문장/글의순서/문장삽입/요약문, and the long passage sets (e.g. 41~42, 43~45). Include every one.
+                - For a passage shared by a set (41~42, 43~45), repeat the full passage on each question in that set.
+                - Keep each English passage verbatim. If a question has no passage, use "".
+                - Do not invent answers; the paper has no answer key.
+
+                Return only valid JSON, no markdown:
+                {
+                  "questions": [
+                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."] }
+                  ]
+                }
+                """;
+    }
+
+    private String wholeExamUserPrompt(String fullText) {
+        return """
+                Extract ALL reading questions from this exam — every question after the listening section, in order, none skipped.
+                Before finishing, find the highest question number in the text and make sure your output includes every reading number up to it.
+
+                === EXAM TEXT START ===
+                %s
+                === EXAM TEXT END ===
+                """.formatted(fullText);
+    }
+
+    private String pageSystemPrompt() {
+        return """
+                You extract reading-comprehension questions from ONE page of a Korean high-school English exam (수능/모의고사).
+                Rules:
+                - Extract EVERY reading question on this page. Do not skip any.
+                - EXCLUDE listening questions: any whose Korean prompt contains 듣고/대화를 듣고/다음을 듣고/방송.
+                - Keep the English passage verbatim, or "" if none on this page.
+                - A question must include its choices (보기 ①~⑤). Include what is present even if partly cut off.
+                - Do not invent answers.
+                Return only valid JSON, no markdown:
+                {
+                  "questions": [
+                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."] }
+                  ]
+                }
+                If this page has no reading question, return {"questions": []}.
+                """;
+    }
+
+    private String pageUserPrompt(String pageText, int pageNo) {
+        return """
+                This is page %d. Extract all reading questions on it.
+
+                === PAGE TEXT START ===
+                %s
+                === PAGE TEXT END ===
+                """.formatted(pageNo, pageText);
+    }
+
+    /** 파싱 실패가 전체를 막지 않도록 throw 대신 null 반환. */
+    private ExtractedList parseQuiet(String content, int pageNo) {
+        if (!StringUtils.hasText(content)) return null;
+        String json = content.trim();
+        if (json.startsWith("```")) {
+            json = json.replaceAll("^```[a-zA-Z]*\\s*", "").replaceAll("\\s*```$", "").trim();
+        }
+        int start = json.indexOf('{');
+        int end = json.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            json = json.substring(start, end + 1);
+        }
+        try {
+            return objectMapper.readValue(json, ExtractedList.class);
+        } catch (Exception e) {
+            log.warn("Failed to parse extracted JSON (page {}): {}", pageNo, e.getMessage());
+            return null;
+        }
+    }
+
+    private List<String> normalize(List<String> values) {
+        if (values == null) return List.of();
+        return values.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .toList();
+    }
+
+    private record ExtractedList(List<ExtractedQuestion> questions) {
+    }
+
+    private record ExtractedQuestion(Integer number, String prompt, String passage, List<String> choices) {
+    }
+}

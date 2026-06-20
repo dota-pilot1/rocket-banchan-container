@@ -57,7 +57,7 @@ public record QuestionResponse(
 
     private static String resolveArea(List<String> categoryPath) {
         return categoryPath.stream()
-                .filter(name -> name.equals("단어") || name.equals("문법") || name.equals("독해") || name.equals("듣기"))
+                .filter(name -> name.equals("어휘") || name.equals("어법") || name.equals("독해") || name.equals("듣기"))
                 .findFirst()
                 .orElse(null);
     }

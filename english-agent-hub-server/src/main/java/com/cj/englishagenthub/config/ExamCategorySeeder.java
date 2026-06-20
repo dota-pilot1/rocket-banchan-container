@@ -14,6 +14,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * 시험지 운영 분류 트리. 문제 은행 분류(QuestionSeeder)와 동일하게
+ * MVP 범위(고등 영어·수학)로 맞추고, 비-고등 분류는 정리한다.
+ */
 @Component
 @Order(4)
 @RequiredArgsConstructor
@@ -22,36 +26,32 @@ public class ExamCategorySeeder implements ApplicationRunner {
     private final ExamCategoryRepository examCategoryRepository;
     private final ExamRepository examRepository;
 
-    private static final Set<String> ALLOWED_ENGLISH_CATEGORY_PATHS = Set.of(
+    private static final List<String> ENGLISH_AREAS = List.of("어휘", "어법", "독해", "듣기");
+    private static final List<String> MATH_UNITS = List.of("대수", "미적분Ⅰ", "확률과 통계", "기하");
+
+    private static final Set<String> ALLOWED_CATEGORY_PATHS = Set.of(
             "영어",
-            "영어 > 초등 영어",
-            "영어 > 초등 영어 > 단어",
-            "영어 > 초등 영어 > 문법",
-            "영어 > 초등 영어 > 독해",
-            "영어 > 초등 영어 > 듣기",
-            "영어 > 중학 영어",
-            "영어 > 중학 영어 > 단어",
-            "영어 > 중학 영어 > 문법",
-            "영어 > 중학 영어 > 독해",
-            "영어 > 중학 영어 > 듣기",
-            "영어 > 고등 영어",
-            "영어 > 고등 영어 > 단어",
-            "영어 > 고등 영어 > 문법",
-            "영어 > 고등 영어 > 독해",
-            "영어 > 고등 영어 > 듣기"
+            "영어 > 어휘",
+            "영어 > 어법",
+            "영어 > 독해",
+            "영어 > 듣기",
+            "수학",
+            "수학 > 대수",
+            "수학 > 미적분Ⅰ",
+            "수학 > 확률과 통계",
+            "수학 > 기하"
     );
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        ensurePath(List.of("수학"));
-        for (String level : List.of("초등 영어", "중학 영어", "고등 영어")) {
-            for (String area : List.of("단어", "문법", "독해", "듣기")) {
-                ensurePath(List.of("영어", level, area));
-            }
+        for (String area : ENGLISH_AREAS) {
+            ensurePath(List.of("영어", area));
         }
-        ensurePath(List.of("한국사"));
-        cleanupUnexpectedEnglishCategories();
+        for (String unit : MATH_UNITS) {
+            ensurePath(List.of("수학", unit));
+        }
+        cleanupUnexpectedCategories();
     }
 
     private ExamCategory ensurePath(List<String> path) {
@@ -73,14 +73,13 @@ public class ExamCategorySeeder implements ApplicationRunner {
         return current;
     }
 
-    private void cleanupUnexpectedEnglishCategories() {
+    /** 허용 경로 밖의 시험지 분류를 자식·참조가 없을 때 정리한다. */
+    private void cleanupUnexpectedCategories() {
         boolean changed;
         do {
             changed = false;
-            List<ExamCategory> categories = examCategoryRepository.findAll();
-            for (ExamCategory category : categories) {
-                String path = categoryPath(category);
-                if (!path.startsWith("영어 > ") || ALLOWED_ENGLISH_CATEGORY_PATHS.contains(path)) {
+            for (ExamCategory category : examCategoryRepository.findAll()) {
+                if (ALLOWED_CATEGORY_PATHS.contains(categoryPath(category))) {
                     continue;
                 }
                 if (examCategoryRepository.existsByParent_Id(category.getId()) || examRepository.existsByExamCategory_Id(category.getId())) {

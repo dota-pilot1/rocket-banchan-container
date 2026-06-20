@@ -2,6 +2,7 @@ package com.cj.englishagenthub.exam.presentation;
 
 import com.cj.englishagenthub.auth.security.UserPrincipal;
 import com.cj.englishagenthub.exam.application.ExamService;
+import com.cj.englishagenthub.exam.application.ExamVariantService;
 import com.cj.englishagenthub.exam.presentation.dto.ExamResponse;
 import com.cj.englishagenthub.exam.presentation.dto.ExamUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,7 @@ import java.util.List;
 public class ExamController {
 
     private final ExamService examService;
+    private final ExamVariantService examVariantService;
 
     @GetMapping
     @Operation(summary = "시험지 목록")
@@ -49,6 +51,15 @@ public class ExamController {
     @Operation(summary = "시험지 수정 (DRAFT만)")
     public ExamResponse update(@PathVariable String id, @Valid @RequestBody ExamUpsertRequest req) {
         return examService.update(id, req);
+    }
+
+    @PostMapping("/{id}/generate-variant")
+    @Operation(summary = "시험지 통째 유사 변형 (새 DRAFT 시험지 생성)")
+    public ExamResponse generateVariant(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @PathVariable String id
+    ) {
+        return examVariantService.generateVariant(principal, id);
     }
 
     @PostMapping("/{id}/publish")
