@@ -27,7 +27,6 @@ import {
 import {
   buildCategoryTree,
   categoryApi,
-  flattenCategoryTree,
   type CategoryNode,
 } from "@/entities/category/api/categoryApi";
 import { toast, toastError } from "@/shared/lib/toast";
@@ -35,9 +34,12 @@ import { toast, toastError } from "@/shared/lib/toast";
 type SelItem = {
   questionId: string;
   question: string;
+  passage: string | null;
   questionType: QuestionType;
   difficulty: QuestionDifficulty;
   categoryPath: string[];
+  choices: string[];
+  answer: string;
   points: number;
 };
 
@@ -78,11 +80,6 @@ function ExamBuilder() {
     queryFn: () => categoryApi.list(),
   });
   const categoryTree = useMemo(() => buildCategoryTree(categoryRecords), [categoryRecords]);
-  const categoryPathById = useMemo(
-    () => new Map(flattenCategoryTree(categoryTree).map((c) => [c.id, c.pathLabel])),
-    [categoryTree],
-  );
-  const selectedPathLabel = categoryId !== null ? categoryPathById.get(categoryId) ?? null : null;
 
   // 카테고리 id → 그 노드가 속한 최상위(과목) id
   const rootIdByCategoryId = useMemo(() => {
@@ -95,14 +92,22 @@ function ExamBuilder() {
     return map;
   }, [categoryTree]);
 
-  const activeSubjectId = categoryId === null ? null : rootIdByCategoryId.get(categoryId) ?? null;
-  const visibleSubjects = activeSubjectId === null ? categoryTree : categoryTree.filter((r) => r.id === activeSubjectId);
+  const examSubjectId = exam?.subjectId ?? null;
+  const scopedCategoryTree = useMemo(
+    () => (examSubjectId === null ? categoryTree : categoryTree.filter((root) => root.id === examSubjectId)),
+    [categoryTree, examSubjectId],
+  );
+  const activeSubjectId =
+    examSubjectId !== null ? examSubjectId : categoryId === null ? null : rootIdByCategoryId.get(categoryId) ?? null;
+  const visibleSubjects =
+    activeSubjectId === null ? scopedCategoryTree : scopedCategoryTree.filter((root) => root.id === activeSubjectId);
+  const questionCategoryId = categoryId ?? examSubjectId ?? undefined;
 
   const { data: questions = [], isLoading: qLoading } = useQuery({
-    queryKey: ["questions", "bank", categoryId, difficulty, keyword],
+    queryKey: ["questions", "bank", questionCategoryId, difficulty, keyword],
     queryFn: () =>
       questionApi.list({
-        categoryId: categoryId ?? undefined,
+        categoryId: questionCategoryId,
         difficulty: difficulty || undefined,
         keyword: keyword || undefined,
       }),
@@ -125,15 +130,25 @@ function ExamBuilder() {
         exam.items.map((it) => ({
           questionId: it.questionId,
           question: it.question,
+          passage: it.passage,
           questionType: it.questionType,
           difficulty: it.difficulty,
           categoryPath: it.categoryPath,
+          choices: it.choices,
+          answer: it.answer,
           points: it.points,
         })),
       );
       setLoadedId(exam.id);
     }
   }, [exam, loadedId]);
+
+  useEffect(() => {
+    if (examSubjectId === null || categoryId === null) return;
+    if (rootIdByCategoryId.get(categoryId) !== examSubjectId) {
+      setCategoryId(null);
+    }
+  }, [categoryId, examSubjectId, rootIdByCategoryId]);
 
   const selectedIds = useMemo(() => new Set(selected.map((s) => s.questionId)), [selected]);
   const totalPoints = selected.reduce((sum, s) => sum + (s.points || 0), 0);
@@ -174,16 +189,19 @@ function ExamBuilder() {
     onError: (e) => toastError(e, "발행에 실패했습니다."),
   });
 
-  const addQuestion = (q: { id: string; question: string; questionType: QuestionType; difficulty: QuestionDifficulty; categoryPath: string[] }) => {
+  const addQuestion = (q: { id: string; question: string; passage?: string | null; questionType: QuestionType; difficulty: QuestionDifficulty; categoryPath: string[]; choices: string[]; answer: string }) => {
     if (selectedIds.has(q.id)) return;
     setSelected((cur) => [
       ...cur,
       {
         questionId: q.id,
         question: q.question,
+        passage: q.passage ?? null,
         questionType: q.questionType,
         difficulty: q.difficulty,
         categoryPath: q.categoryPath,
+        choices: q.choices,
+        answer: q.answer,
         points: 10,
       },
     ]);
@@ -198,9 +216,12 @@ function ExamBuilder() {
         .map<SelItem>((q) => ({
           questionId: q.id,
           question: q.question,
+          passage: q.passage ?? null,
           questionType: q.questionType,
           difficulty: q.difficulty,
           categoryPath: q.categoryPath,
+          choices: q.choices,
+          answer: q.answer,
           points: 10,
         }));
       return [...cur, ...additions];
@@ -258,8 +279,8 @@ function ExamBuilder() {
   }
 
   return (
-    <main className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-muted/25 px-5 pb-2.5 pt-4">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-1 flex-col gap-3 overflow-hidden">
+    <main className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-muted/25 px-3 pb-2.5 pt-4 sm:px-4">
+      <div className="flex w-full flex-1 flex-col gap-3 overflow-hidden">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-0.5">
           <button
             type="button"
@@ -310,8 +331,8 @@ function ExamBuilder() {
             style={{
               display: "grid",
               gap: 16,
-              gridTemplateColumns: "260px minmax(460px, 1fr) 380px",
-              minWidth: 1180,
+              gridTemplateColumns: "320px minmax(520px, 1fr) 420px",
+              minWidth: 1280,
               height: "100%",
             }}
           >
@@ -319,7 +340,7 @@ function ExamBuilder() {
           <section className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-4">
             {/* 과목 필터 칩 */}
             <div className="flex flex-wrap justify-center gap-1.5">
-              {categoryTree.map((subject) => (
+              {scopedCategoryTree.map((subject) => (
                 <button
                   key={subject.id}
                   type="button"
@@ -439,6 +460,15 @@ function ExamBuilder() {
                             <Badge>{TYPE_LABEL[q.questionType]}</Badge>
                           </div>
                           <p className="mt-1 line-clamp-2 text-sm">{q.question}</p>
+                          {q.passage && (
+                            <p className="mt-1 line-clamp-2 whitespace-pre-line rounded-md bg-muted/40 px-2 py-1.5 text-xs leading-5 text-muted-foreground">
+                              {q.passage}
+                            </p>
+                          )}
+                          {q.questionType === "MULTIPLE_CHOICE" && q.choices.length > 0 && (
+                            <ChoiceList choices={q.choices} answer={q.answer} />
+                          )}
+                          <AnswerLine answer={q.answer} choices={q.choices} />
                         </div>
                         <button
                           type="button"
@@ -486,6 +516,15 @@ function ExamBuilder() {
                           <Badge>{TYPE_LABEL[s.questionType]}</Badge>
                         </div>
                         <p className="mt-1 line-clamp-2 text-sm">{s.question}</p>
+                        {s.passage && (
+                          <p className="mt-1 line-clamp-3 whitespace-pre-line rounded-md bg-muted/40 px-2 py-1.5 text-xs leading-5 text-muted-foreground">
+                            {s.passage}
+                          </p>
+                        )}
+                        {s.questionType === "MULTIPLE_CHOICE" && s.choices.length > 0 && (
+                          <ChoiceList choices={s.choices} answer={s.answer} />
+                        )}
+                        <AnswerLine answer={s.answer} choices={s.choices} />
                         <div className="mt-2 flex items-center gap-2">
                           <label className="text-xs text-muted-foreground">배점</label>
                           <input
@@ -591,6 +630,36 @@ function Badge({ children }: { children: React.ReactNode }) {
     <span className="inline-flex items-center rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
       {children}
     </span>
+  );
+}
+
+function ChoiceList({ choices, answer }: { choices: string[]; answer: string }) {
+  return (
+    <ol className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+      {choices.map((choice, index) => (
+        <li
+          key={`${index}-${choice}`}
+          className={`min-w-0 rounded-md border px-2 py-1 ${
+            choice === answer
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-border bg-background"
+          }`}
+        >
+          <span className="mr-1 font-semibold text-foreground">{index + 1}.</span>
+          <span className="break-words">{choice}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function AnswerLine({ answer, choices }: { answer: string; choices: string[] }) {
+  const answerIndex = choices.findIndex((choice) => choice === answer);
+  const label = answerIndex >= 0 ? `${answerIndex + 1}번` : answer;
+  return (
+    <p className="mt-2 inline-flex items-center rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
+      <span>정답 {label}</span>
+    </p>
   );
 }
 

@@ -18,6 +18,7 @@ public record ExamItemResponse(
         QuestionDifficulty difficulty,
         List<String> categoryPath,
         String question,
+        String passage,
         List<String> choices,
         String answer,
         String explanation
@@ -32,6 +33,7 @@ public record ExamItemResponse(
                 q.getDifficulty(),
                 q.getCategory().getPathNames(),
                 q.getQuestion(),
+                q.getPassage(),
                 q.getChoices(),
                 q.getAnswer(),
                 q.getExplanation()

@@ -12,6 +12,7 @@ export type ExamItemResponse = {
   difficulty: QuestionDifficulty;
   categoryPath: string[];
   question: string;
+  passage: string | null;
   choices: string[];
   answer: string;
   explanation: string;
@@ -47,6 +48,7 @@ export type TakeItem = {
   orderNo: number;
   questionType: QuestionType;
   question: string;
+  passage: string | null;
   choices: string[];
   maxPoints: number;
 };
@@ -67,6 +69,7 @@ export type AttemptResultItem = {
   orderNo: number;
   questionType: QuestionType;
   question: string;
+  passage: string | null;
   choices: string[];
   submittedAnswer: string | null;
   correctAnswer: string;

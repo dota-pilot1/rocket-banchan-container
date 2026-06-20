@@ -140,8 +140,8 @@ function ExamsWorkspace() {
   });
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
-      <div className="mx-auto grid w-full max-w-[1320px] gap-5 lg:grid-cols-[210px_minmax(0,1fr)]">
+    <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-3 py-5 sm:px-4">
+      <div className="grid w-full gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
         <SubjectSidebar
           groups={subjectGroups}
           total={exams.length}

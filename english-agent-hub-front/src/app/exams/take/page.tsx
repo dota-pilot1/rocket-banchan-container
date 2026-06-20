@@ -80,10 +80,12 @@ function ExamTaker() {
   }
 
   const answeredCount = take.items.filter((it) => (answers[it.questionId] ?? "").trim() !== "").length;
+  const splitIndex = Math.ceil(take.items.length / 2);
+  const itemColumns = [take.items.slice(0, splitIndex), take.items.slice(splitIndex)];
 
   return (
-    <main className="min-h-[calc(100vh-3.5rem)] bg-gradient-to-b from-muted/60 via-muted/30 to-background px-4 py-4">
-      <div className="mx-auto w-full max-w-[1120px] space-y-4">
+    <main className="min-h-[calc(100vh-3.5rem)] bg-gradient-to-b from-muted/60 via-muted/30 to-background px-3 py-4 sm:px-4">
+      <div className="mx-auto w-full max-w-[1440px] space-y-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border pb-3">
           <button
             type="button"
@@ -100,55 +102,72 @@ function ExamTaker() {
           </p>
         </div>
 
-        <div className="columns-1 gap-4 lg:columns-2">
-          {take.items.map((it, i) => (
-            <div key={it.questionId} className="mb-4 break-inside-avoid rounded-xl border border-border bg-background p-4 shadow-sm">
-              <div className="flex items-start gap-2">
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="whitespace-pre-wrap text-sm font-medium">{it.question}</p>
-                  <span className="mt-1 inline-block text-xs text-muted-foreground">{it.maxPoints}점</span>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {itemColumns.map((items, columnIndex) => (
+            <div key={columnIndex} className="rounded-xl border border-border bg-background shadow-sm">
+              {items.map((it, localIndex) => {
+                const questionNumber = columnIndex === 0 ? localIndex + 1 : splitIndex + localIndex + 1;
+                return (
+                  <section key={it.questionId} className="border-b border-border p-4 last:border-b-0 sm:p-5">
+                    <div className="flex items-start gap-3">
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                        {questionNumber}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="min-w-0 whitespace-pre-wrap text-base font-semibold leading-7">{it.question}</p>
+                          <span className="inline-flex h-6 shrink-0 items-center rounded-md border border-border bg-muted px-2 text-xs font-semibold text-muted-foreground">
+                            {it.maxPoints}점
+                          </span>
+                        </div>
+                        {it.passage && (
+                          <div className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+                            <p className="text-[11px] font-bold text-muted-foreground">지문</p>
+                            <p className="mt-1 whitespace-pre-line text-sm leading-6">{it.passage}</p>
+                          </div>
+                        )}
 
-                  <div className="mt-3">
-                    {it.questionType === "MULTIPLE_CHOICE" ? (
-                      <div className="space-y-2">
-                        {it.choices.map((choice) => {
-                          const checked = answers[it.questionId] === choice;
-                          return (
-                            <label
-                              key={choice}
-                              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                                checked
-                                  ? "border-primary bg-primary/10 font-semibold text-primary"
-                                  : "border-border bg-muted/40 hover:border-primary/40 hover:bg-accent"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name={it.questionId}
-                                value={choice}
-                                checked={checked}
-                                onChange={() => setAnswers((a) => ({ ...a, [it.questionId]: choice }))}
-                                className="accent-[var(--primary)]"
-                              />
-                              <span>{choice}</span>
-                            </label>
-                          );
-                        })}
+                        <div className="mt-4 border-t border-border pt-4">
+                          {it.questionType === "MULTIPLE_CHOICE" ? (
+                            <div className="space-y-2">
+                              {it.choices.map((choice) => {
+                                const checked = answers[it.questionId] === choice;
+                                return (
+                                  <label
+                                    key={choice}
+                                    className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm transition-colors ${
+                                      checked
+                                        ? "border-primary bg-primary/10 font-semibold text-primary"
+                                        : "border-border bg-muted/40 hover:border-primary/40 hover:bg-accent"
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={it.questionId}
+                                      value={choice}
+                                      checked={checked}
+                                      onChange={() => setAnswers((a) => ({ ...a, [it.questionId]: choice }))}
+                                      className="accent-[var(--primary)]"
+                                    />
+                                    <span>{choice}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <input
+                              value={answers[it.questionId] ?? ""}
+                              onChange={(e) => setAnswers((a) => ({ ...a, [it.questionId]: e.target.value }))}
+                              placeholder="답을 입력하세요"
+                              className="h-11 w-full rounded-md border border-input bg-muted/40 px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
+                            />
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <input
-                        value={answers[it.questionId] ?? ""}
-                        onChange={(e) => setAnswers((a) => ({ ...a, [it.questionId]: e.target.value }))}
-                        placeholder="답을 입력하세요"
-                        className="h-10 w-full rounded-md border border-input bg-muted/40 px-3 text-sm outline-none focus:bg-background focus:ring-2 focus:ring-ring"
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           ))}
         </div>
@@ -221,8 +240,14 @@ function ResultView({
                         {it.earnedPoints}/{it.maxPoints}
                       </span>
                     </div>
+                    {it.passage && (
+                      <div className="mt-2 rounded-md border border-border bg-muted/40 px-3 py-2">
+                        <p className="text-[11px] font-bold text-muted-foreground">지문</p>
+                        <p className="mt-1 whitespace-pre-line text-sm leading-6">{it.passage}</p>
+                      </div>
+                    )}
 
-                    <dl className="mt-3 space-y-1.5 text-sm">
+                    <dl className="mt-4 space-y-1.5 border-t border-border pt-3 text-sm">
                       <Row label="내 답안" value={it.submittedAnswer || "(미응답)"} tone={isCorrect ? "ok" : "bad"} />
                       {!isCorrect && <Row label="정답" value={it.correctAnswer} tone="ok" />}
                     </dl>

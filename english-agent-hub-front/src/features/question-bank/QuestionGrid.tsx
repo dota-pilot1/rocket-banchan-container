@@ -11,7 +11,7 @@ import {
   type RowSelectionOptions,
   type SelectionChangedEvent,
 } from "ag-grid-community";
-import { Pencil, Search, Sparkles, Trash2 } from "lucide-react";
+import { FileText, Pencil, Search, Sparkles, Trash2 } from "lucide-react";
 import type {
   QuestionDifficulty,
   QuestionResponse,
@@ -48,13 +48,14 @@ type QuestionGridProps = {
   onEdit: (q: QuestionResponse) => void;
   onEmbed: (q: QuestionResponse) => void;
   onShowSimilar: (q: QuestionResponse) => void;
+  onGenerateSimilar: (q: QuestionResponse) => void;
   onDelete: (q: QuestionResponse) => void;
   onSelectionChange?: (selected: QuestionResponse[]) => void;
 };
 
 type ActionContext = Pick<
   QuestionGridProps,
-  "onEdit" | "onEmbed" | "onShowSimilar" | "onDelete"
+  "onEdit" | "onEmbed" | "onShowSimilar" | "onGenerateSimilar" | "onDelete"
 >;
 
 function ActionsCell(params: ICellRendererParams<QuestionResponse>) {
@@ -83,6 +84,14 @@ function ActionsCell(params: ICellRendererParams<QuestionResponse>) {
       </button>
       <button
         type="button"
+        onClick={() => ctx.onGenerateSimilar(q)}
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+        title="독해 유사 출제"
+      >
+        <FileText className="h-3.5 w-3.5" />
+      </button>
+      <button
+        type="button"
         onClick={() => ctx.onEdit(q)}
         className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
         title="수정"
@@ -106,6 +115,7 @@ export function QuestionGrid({
   onEdit,
   onEmbed,
   onShowSimilar,
+  onGenerateSimilar,
   onDelete,
   onSelectionChange,
 }: QuestionGridProps) {
@@ -158,7 +168,7 @@ export function QuestionGrid({
       {
         headerName: "작업",
         cellRenderer: ActionsCell,
-        width: 160,
+        width: 180,
         pinned: "right",
         sortable: false,
         filter: false,
@@ -178,8 +188,8 @@ export function QuestionGrid({
   );
 
   const context = useMemo<ActionContext>(
-    () => ({ onEdit, onEmbed, onShowSimilar, onDelete }),
-    [onEdit, onEmbed, onShowSimilar, onDelete],
+    () => ({ onEdit, onEmbed, onShowSimilar, onGenerateSimilar, onDelete }),
+    [onEdit, onEmbed, onShowSimilar, onGenerateSimilar, onDelete],
   );
 
   // 헤더 체크박스로 전체 선택 + 행마다 체크박스(다중 선택)

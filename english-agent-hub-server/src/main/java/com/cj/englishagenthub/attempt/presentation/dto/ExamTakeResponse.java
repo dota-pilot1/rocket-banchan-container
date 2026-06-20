@@ -25,6 +25,7 @@ public record ExamTakeResponse(
             int orderNo,
             QuestionType questionType,
             String question,
+            String passage,
             List<String> choices,
             int maxPoints
     ) {}
@@ -38,6 +39,7 @@ public record ExamTakeResponse(
                             a.getOrderNo(),
                             q.getQuestionType(),
                             q.getQuestion(),
+                            q.getPassage(),
                             q.getChoices(),
                             a.getMaxPoints()
                     );

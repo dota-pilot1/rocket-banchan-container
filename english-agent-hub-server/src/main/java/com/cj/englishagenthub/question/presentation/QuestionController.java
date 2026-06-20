@@ -1,8 +1,10 @@
 package com.cj.englishagenthub.question.presentation;
 
 import com.cj.englishagenthub.question.application.QuestionEmbeddingService;
+import com.cj.englishagenthub.question.application.QuestionGenerationService;
 import com.cj.englishagenthub.question.application.QuestionService;
 import com.cj.englishagenthub.question.domain.QuestionDifficulty;
+import com.cj.englishagenthub.question.presentation.dto.GenerateSimilarReadingQuestionRequest;
 import com.cj.englishagenthub.question.presentation.dto.QuestionResponse;
 import com.cj.englishagenthub.question.presentation.dto.QuestionUpsertRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,6 +26,7 @@ public class QuestionController {
 
     private final QuestionService questionService;
     private final QuestionEmbeddingService questionEmbeddingService;
+    private final QuestionGenerationService questionGenerationService;
 
     @GetMapping
     @Operation(summary = "문제 목록 조회")
@@ -85,6 +88,23 @@ public class QuestionController {
             @RequestParam(defaultValue = "10") int limit
     ) {
         return questionEmbeddingService.findSimilar(id, limit);
+    }
+
+    @PostMapping("/{id}/generate-similar-reading")
+    @Operation(summary = "독해 템플릿 기반 유사 문제 생성")
+    public List<QuestionUpsertRequest> generateSimilarReadingQuestions(
+            @PathVariable String id,
+            @Valid @RequestBody GenerateSimilarReadingQuestionRequest request
+    ) {
+        return questionGenerationService.generateSimilarReadingQuestions(id, request);
+    }
+
+    @PostMapping("/generate-similar-reading")
+    @Operation(summary = "독해 템플릿 샘플 기반 유사 문제 생성")
+    public List<QuestionUpsertRequest> generateSimilarReadingQuestions(
+            @Valid @RequestBody GenerateSimilarReadingQuestionRequest request
+    ) {
+        return questionGenerationService.generateSimilarReadingQuestions(request);
     }
 
     @GetMapping("/embedding-status")

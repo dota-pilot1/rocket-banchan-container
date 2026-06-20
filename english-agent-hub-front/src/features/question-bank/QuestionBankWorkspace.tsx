@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleAlert,
   Clock,
+  FileText,
   Filter,
   FolderPlus,
   FolderTree,
@@ -50,6 +51,36 @@ import { QuestionGrid } from "./QuestionGrid";
 
 type ViewMode = "card" | "grid";
 
+type ReadingQuestionTemplate = {
+  id: string;
+  title: string;
+  subtype: string;
+  difficulty: QuestionDifficulty;
+  question: string;
+  passage?: string;
+  choices: string[];
+  answer: string;
+  explanation: string;
+  keywords: string[];
+  categoryHint: string;
+  rules: string[];
+};
+
+type SimilarGenerationOptions = {
+  count: number;
+  difficulty: QuestionDifficulty | "source";
+  choiceCount: number;
+  includeExplanation: boolean;
+  keepTopic: boolean;
+  avoidDuplicate: boolean;
+};
+
+type GeneratedReadingDraft = {
+  id: string;
+  label: string;
+  body: QuestionUpsertRequest;
+};
+
 const difficulties: { value: QuestionDifficulty; label: string }[] = [
   { value: "easy", label: "하" },
   { value: "medium", label: "중" },
@@ -61,6 +92,7 @@ const initialForm: QuestionUpsertRequest = {
   categoryId: null,
   difficulty: "medium",
   question: "",
+  passage: "",
   choices: [],
   answer: "",
   explanation: "",
@@ -70,11 +102,136 @@ const initialForm: QuestionUpsertRequest = {
 
 const initialChoiceRows = ["", "", "", ""];
 
+const readingCategoryHints = ["내용일치", "문장해석", "어휘추론", "빈칸", "독해"];
+
+const splitReadingQuestion = (question: QuestionResponse | QuestionUpsertRequest | ReadingQuestionTemplate) => {
+  const text = question.question.trim();
+  const separatedPassage = "passage" in question ? (question.passage ?? "").trim() : "";
+  const categoryPath = "categoryPath" in question ? question.categoryPath : [];
+  const categoryHint = "categoryHint" in question ? question.categoryHint : "";
+  const isReadingLike = [...categoryPath, categoryHint].some((part) =>
+    readingCategoryHints.some((hint) => part.includes(hint)),
+  );
+
+  if (!isReadingLike) {
+    return { prompt: text, passage: separatedPassage };
+  }
+
+  if (separatedPassage) {
+    return { prompt: text, passage: separatedPassage };
+  }
+
+  const doubleNewlineIndex = text.indexOf("\n\n");
+  if (doubleNewlineIndex > -1) {
+    return {
+      prompt: text.slice(0, doubleNewlineIndex).trim(),
+      passage: text.slice(doubleNewlineIndex).trim(),
+    };
+  }
+
+  const promptBoundary = text.match(/[?？]\s+(?=[A-Z])/);
+  if (promptBoundary?.index != null) {
+    const splitIndex = promptBoundary.index + 1;
+    return {
+      prompt: text.slice(0, splitIndex).trim(),
+      passage: text.slice(splitIndex).trim(),
+    };
+  }
+
+  return { prompt: text, passage: "" };
+};
+
+const readingQuestionTemplates: ReadingQuestionTemplate[] = [
+  {
+    id: "reading-main-idea",
+    title: "주제 고르기",
+    subtype: "내용일치",
+    difficulty: "medium",
+    question: "다음 글의 주제로 가장 알맞은 것은?",
+    passage:
+      "Many students try to memorize many English words at once before a test. However, they often forget most of them a few days later. A better way is to review a small number of words every day. Short daily practice gives the brain more chances to meet the same words again. Over time, this habit helps students remember new vocabulary for a long time.",
+    choices: ["매일 복습의 효과", "학교 시설의 중요성", "여행 계획 세우기", "운동 경기의 규칙"],
+    answer: "매일 복습의 효과",
+    explanation: "글은 많은 단어를 한 번에 외우는 것보다 매일 조금씩 복습하는 습관이 장기 기억에 도움이 된다는 내용입니다.",
+    keywords: ["영어", "독해", "주제", "review", "practice"],
+    categoryHint: "내용일치",
+    rules: ["지문은 4~5문장", "선지는 한국어 명사구 4개", "정답은 글 전체의 핵심 효과", "오답은 소재만 비슷한 일반 주제"],
+  },
+  {
+    id: "reading-title",
+    title: "제목 고르기",
+    subtype: "내용일치",
+    difficulty: "medium",
+    question: "다음 글의 제목으로 가장 알맞은 것은?",
+    passage:
+      "A library is not only a place where people borrow books. Many libraries now offer quiet rooms for study and small spaces for group projects. Some libraries also run reading clubs or language programs for students. People can meet others who have similar interests and learn together. In this way, a library can become an active learning place for the whole community.",
+    choices: ["A Library as a Learning Place", "How to Buy New Books", "The History of Sports", "A Trip to the Sea"],
+    answer: "A Library as a Learning Place",
+    explanation: "글은 도서관이 책을 빌리는 곳을 넘어 공부, 모임, 학습 프로그램을 제공하는 공간이라는 내용입니다.",
+    keywords: ["영어", "독해", "제목", "library", "learning"],
+    categoryHint: "내용일치",
+    rules: ["지문은 4~5문장", "선지는 영어 제목 4개", "정답은 전체 내용을 포괄", "오답은 범위가 너무 좁거나 무관한 제목"],
+  },
+  {
+    id: "reading-detail",
+    title: "내용 일치",
+    subtype: "내용일치",
+    difficulty: "easy",
+    question: "다음 글의 내용과 일치하는 것은?",
+    passage:
+      "Mina takes the bus to school every morning. The bus stop is about five minutes from her house. On rainy days, she leaves home ten minutes earlier because the bus is often crowded. She usually reads a short English story while she waits. This small habit helps her use waiting time well.",
+    choices: ["Mina walks to school.", "Mina takes the bus to school.", "Mina leaves later on rainy days.", "Mina goes to school at night."],
+    answer: "Mina takes the bus to school.",
+    explanation: "본문 첫 문장에서 Mina가 매일 아침 버스를 타고 학교에 간다고 했습니다.",
+    keywords: ["영어", "독해", "내용일치", "bus", "school"],
+    categoryHint: "내용일치",
+    rules: ["지문은 사실 관계 4~5문장", "정답은 본문 문장과 직접 일치", "오답은 이동수단·시간·조건을 하나씩 왜곡", "선지는 영어 문장 4개"],
+  },
+  {
+    id: "reading-blank",
+    title: "빈칸 추론",
+    subtype: "문장해석",
+    difficulty: "hard",
+    question: "빈칸에 들어갈 말로 가장 알맞은 것은?",
+    passage:
+      "Jisu wanted to play a difficult song for the school concert. At first, she made many mistakes and felt nervous. Instead of giving up, she practiced the song for thirty minutes every day. Her teacher also gave her simple advice about rhythm. As a result, she became much ____ at playing it.",
+    choices: ["better", "colder", "heavier", "slower"],
+    answer: "better",
+    explanation: "꾸준히 연습하고 조언을 받은 결과 연주 실력이 더 좋아졌다는 흐름이므로 better가 알맞습니다.",
+    keywords: ["영어", "독해", "빈칸", "practice", "better"],
+    categoryHint: "문장해석",
+    rules: ["지문은 원인-결과 구조 4~5문장", "빈칸은 결과를 완성하는 형용사/부사", "정답은 문맥상 긍정·부정 방향이 유일", "오답은 품사는 맞지만 의미 흐름이 어긋남"],
+  },
+  {
+    id: "reading-reference",
+    title: "지시어 의미 파악",
+    subtype: "문장해석",
+    difficulty: "medium",
+    question: '다음 글에서 "it"이 가리키는 것은?',
+    passage:
+      "Sora bought a new dictionary for her English class. The book includes simple meanings, example sentences, and pronunciation tips. When she studies new words at home, she keeps it on her desk. She checks it before writing her own example sentences. This helps her understand how each word is used.",
+    choices: ["a dictionary", "Sora", "English words", "a store"],
+    answer: "a dictionary",
+    explanation: "세 번째와 네 번째 문장의 it은 앞에서 언급된 a new dictionary를 가리킵니다.",
+    keywords: ["영어", "독해", "지시어", "dictionary"],
+    categoryHint: "문장해석",
+    rules: ["지문은 선행사와 대명사를 포함한 4~5문장", "문항은 지시어가 가리키는 대상을 질문", "정답은 명시된 선행사", "오답은 주변 명사·인물·장소"],
+  },
+];
+
 const questionTypeLabel = (value: QuestionType) =>
   value === "MULTIPLE_CHOICE" ? "객관식" : "주관식";
 
 const difficultyLabel = (value: QuestionDifficulty) =>
   difficulties.find((difficulty) => difficulty.value === value)?.label ?? value;
+
+const splitQuestionPrompt = (question: string) => {
+  const [prompt, ...passageParts] = question.split(/\n\s*\n/);
+  return {
+    prompt: prompt?.trim() ?? "",
+    passage: passageParts.join("\n\n").trim(),
+  };
+};
 
 const splitCsv = (value: string) =>
   value
@@ -93,6 +250,7 @@ const buildEmbeddingTextPreview = (
     `분류: ${categoryPathLabel}`,
     `난이도: ${difficultyLabel(form.difficulty)}`,
     `문제: ${form.question}`,
+    `지문: ${form.passage ?? ""}`,
     `정답: ${answer}`,
     `해설: ${form.explanation}`,
     `키워드: ${keywords.join(", ")}`,
@@ -111,6 +269,8 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
   const [shortAnswer, setShortAnswer] = useState("");
   const [keywordsText, setKeywordsText] = useState(initialForm.keywords?.join(", ") ?? "");
   const [formOpen, setFormOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [templateSource, setTemplateSource] = useState<QuestionResponse | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [embedTarget, setEmbedTarget] = useState<QuestionResponse | null>(null);
@@ -329,6 +489,16 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
   const selectedCategoryLabel =
     categoryOptions.find((option) => option.id === form.categoryId)?.pathLabel ?? "";
 
+  const openTemplateDialog = (source: QuestionResponse | null = null) => {
+    setTemplateSource(source);
+    setTemplateOpen(true);
+  };
+
+  const closeTemplateDialog = () => {
+    setTemplateOpen(false);
+    setTemplateSource(null);
+  };
+
   const handleChangeChoice = (index: number, value: string) => {
     setChoiceRows((rows) => rows.map((row, i) => (i === index ? value : row)));
   };
@@ -376,6 +546,20 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
     }
   };
 
+  const handleUseDraft = (draft: QuestionUpsertRequest) => {
+    const choices = draft.choices && draft.choices.length > 0 ? draft.choices : initialChoiceRows;
+    const answerIndex = choices.findIndex((choice) => choice === draft.answer);
+
+    setForm(draft);
+    setChoiceRows(choices);
+    setAnswerIndex(answerIndex >= 0 ? answerIndex : null);
+    setShortAnswer("");
+    setKeywordsText(draft.keywords?.join(", ") ?? "");
+    setEditingId(null);
+    closeTemplateDialog();
+    setFormOpen(true);
+  };
+
   const handleEdit = (question: QuestionResponse) => {
     const questionType: QuestionType =
       question.questionType ?? (question.choices.length > 0 ? "MULTIPLE_CHOICE" : "SHORT_ANSWER");
@@ -384,6 +568,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
       categoryId: question.categoryId,
       difficulty: question.difficulty,
       question: question.question,
+      passage: question.passage ?? "",
       choices: question.choices,
       answer: question.answer,
       explanation: question.explanation,
@@ -414,6 +599,9 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
     () => buildEmbeddingTextPreview(form, keywordsText, effectiveAnswer, selectedCategoryLabel),
     [form, keywordsText, effectiveAnswer, selectedCategoryLabel],
   );
+  const generationCategoryId = filters.categoryId ?? subjectId;
+  const generationCategoryPath =
+    categoryOptions.find((option) => option.id === generationCategoryId)?.pathLabel ?? subject?.name ?? "";
 
   if (!isLoadingCategories && !subject) {
     return (
@@ -474,6 +662,14 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
             </button>
             <button
               type="button"
+              onClick={() => openTemplateDialog()}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+            >
+              <FileText className="h-4 w-4" />
+              템플릿 보기
+            </button>
+            <button
+              type="button"
               onClick={() => setFormOpen(true)}
               className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
             >
@@ -492,6 +688,16 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
             onCreate={(parentId, name) => createCategoryMutation.mutate({ parentId: parentId ?? subjectId, name })}
             onRename={(id, name) => renameCategoryMutation.mutate({ id, name })}
             onDelete={(id) => deleteCategoryMutation.mutate(id)}
+          />
+
+          <QuestionTemplateDialog
+            open={templateOpen}
+            source={templateSource}
+            fallbackCategoryId={generationCategoryId}
+            fallbackCategoryPath={generationCategoryPath}
+            templates={readingQuestionTemplates}
+            onUseDraft={handleUseDraft}
+            onClose={closeTemplateDialog}
           />
 
           {formOpen && (
@@ -550,6 +756,12 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                   rows={3}
                   value={form.question}
                   onChange={(value) => setForm((cur) => ({ ...cur, question: value }))}
+                />
+                <TextArea
+                  label="지문"
+                  rows={5}
+                  value={form.passage ?? ""}
+                  onChange={(value) => setForm((cur) => ({ ...cur, passage: value }))}
                 />
                 <div className="space-y-3 rounded-lg border border-border p-3">
                   <div className="grid grid-cols-2 gap-1 rounded-md bg-muted p-1" role="tablist">
@@ -793,6 +1005,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                     onEdit={handleEdit}
                     onEmbed={setEmbedTarget}
                     onShowSimilar={setSimilarTarget}
+                    onGenerateSimilar={openTemplateDialog}
                     onSelectionChange={setSelected}
                     onDelete={async (question) => {
                       if (await confirm({
@@ -818,6 +1031,7 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
                       onEdit={() => handleEdit(question)}
                       onEmbed={() => setEmbedTarget(question)}
                       onShowSimilar={() => setSimilarTarget(question)}
+                      onGenerateSimilar={() => openTemplateDialog(question)}
                       onDelete={async () => {
                         if (await confirm({
                           title: "문제 삭제",
@@ -863,6 +1077,389 @@ export function QuestionBankWorkspace({ subjectId }: { subjectId: number }) {
       />
       {confirmDialog}
     </main>
+  );
+}
+
+function QuestionTemplateDialog({
+  open,
+  source,
+  fallbackCategoryId,
+  fallbackCategoryPath,
+  templates,
+  onUseDraft,
+  onClose,
+}: {
+  open: boolean;
+  source: QuestionResponse | null;
+  fallbackCategoryId: number;
+  fallbackCategoryPath: string;
+  templates: ReadingQuestionTemplate[];
+  onUseDraft: (draft: QuestionUpsertRequest) => void;
+  onClose: () => void;
+}) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState(templates[0]?.id ?? "");
+  const [options, setOptions] = useState<SimilarGenerationOptions>({
+    count: 3,
+    difficulty: "source",
+    choiceCount: 4,
+    includeExplanation: true,
+    keepTopic: true,
+    avoidDuplicate: true,
+  });
+  const [generated, setGenerated] = useState<GeneratedReadingDraft[]>([]);
+  const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0];
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplate) return [];
+      const baseRequest = {
+        templateId: selectedTemplate.id,
+        templateTitle: selectedTemplate.title,
+        subtype: selectedTemplate.subtype,
+        rules: selectedTemplate.rules,
+        ...options,
+      };
+      if (source) {
+        return questionApi.generateSimilarReading(source.id, baseRequest);
+      }
+      return questionApi.generateSimilarReadingFromTemplate({
+        ...baseRequest,
+        categoryId: fallbackCategoryId,
+        categoryPath: fallbackCategoryPath,
+        sourceDifficulty: selectedTemplate.difficulty,
+        sourceQuestion: selectedTemplate.question,
+        sourcePassage: selectedTemplate.passage ?? "",
+        sourceChoices: selectedTemplate.choices,
+        sourceAnswer: selectedTemplate.answer,
+        sourceExplanation: selectedTemplate.explanation,
+        sourceKeywords: selectedTemplate.keywords,
+      });
+    },
+    onSuccess: (drafts) => {
+      setGenerated(
+        drafts.map((draft, index) => ({
+          id: `${Date.now()}-${index}`,
+          label: `생성 ${index + 1}`,
+          body: draft,
+        })),
+      );
+      if (drafts.length > 0) {
+        toast.success(`유사 문제 ${drafts.length}건을 생성했습니다.`);
+      }
+    },
+    onError: (e) => toastError(e, "유사 문제 생성에 실패했습니다."),
+  });
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/35 px-4 py-10"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full max-w-[1480px] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+        <div className="flex items-center justify-between border-b border-border bg-muted/35 px-5 py-4">
+          <div>
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Templates</p>
+            <h2 className="mt-1 text-lg font-bold tracking-tight">
+              {source ? "독해 유사 문제 출제" : "독해 문제 템플릿"}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              기준 문제의 카테고리·난이도는 유지하고, 독해 유형별 규격에 맞춘 새 문제 초안을 만듭니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent"
+            aria-label="닫기"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid min-h-[640px] lg:grid-cols-[580px_minmax(0,1fr)]">
+          <aside className="max-h-[calc(100vh-190px)] overflow-y-auto border-b border-border p-5 lg:border-b-0 lg:border-r">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">독해 템플릿</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                템플릿 샘플을 확인한 뒤 오른쪽 조건으로 유사 문제를 생성합니다.
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              {templates.map((template) => {
+                const selected = selectedTemplate?.id === template.id;
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTemplateId(template.id);
+                      setGenerated([]);
+                    }}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                      selected ? "border-primary bg-primary/5" : "border-border bg-background hover:bg-accent"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs font-semibold">
+                        {template.subtype}
+                      </span>
+                      <span className="rounded-md border border-border px-2 py-1 text-xs font-semibold text-muted-foreground">
+                        {difficultyLabel(template.difficulty)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm font-bold">{template.title}</p>
+                    {selected ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="rounded-md border border-dashed border-border bg-background p-2.5">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">출제 규격</p>
+                          <ul className="mt-1.5 space-y-1 text-xs leading-5 text-muted-foreground">
+                            {template.rules.map((rule) => (
+                              <li key={rule}>- {rule}</li>
+                            ))}
+                          </ul>
+                        </div>
+                        <ReadingQuestionPreview question={template.question} passage={template.passage} />
+                        <div className="grid gap-1">
+                          {template.choices.map((choice, index) => (
+                            <div
+                              key={`${template.id}-${choice}`}
+                              className={`rounded-md border px-2 py-1.5 text-xs ${
+                                choice === template.answer
+                                  ? "border-emerald-300 bg-emerald-50 font-semibold text-emerald-800"
+                                  : "border-border bg-background text-muted-foreground"
+                              }`}
+                            >
+                              {index + 1}. {choice}
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs leading-5 text-muted-foreground">{template.explanation}</p>
+                      </div>
+                    ) : (
+                      <ul className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+                        {template.rules.slice(0, 2).map((rule) => (
+                          <li key={rule}>- {rule}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <section className="min-w-0 max-h-[calc(100vh-190px)] overflow-y-auto p-5">
+            {selectedTemplate && (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">기준 문제 / 생성 조건</p>
+                      <h3 className="mt-1 text-sm font-bold">
+                      {source ? "OpenAI 유사 문제 자동 생성" : "선택 템플릿 기준 자동 생성"}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => generateMutation.mutate()}
+                      disabled={generateMutation.isPending}
+                      className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                      title={source ? "선택 템플릿과 조건으로 유사 문제 생성" : "왼쪽에서 선택한 템플릿 샘플을 기준으로 유사 문제 생성"}
+                    >
+                      {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      유사 문제 자동 생성
+                    </button>
+                  </div>
+
+                  {source ? (
+                    <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <CategoryPathBadge path={source.categoryPath} />
+                        <span className="rounded-md border border-border bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
+                          {difficultyLabel(source.difficulty)}
+                        </span>
+                      </div>
+                      <ReadingQuestionPreview question={source.question} passage={source.passage} size="md" />
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-md border border-dashed border-border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+                      왼쪽에서 선택한 템플릿 샘플을 기준 문제로 사용합니다. 실제 문제 카드의 <span className="font-semibold text-foreground">유사 출제</span> 버튼으로 들어오면 해당 문제의 카테고리와 난이도를 유지합니다.
+                    </div>
+                  )}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-sm font-semibold">
+                      <span>문항 수</span>
+                      <select
+                        value={options.count}
+                        onChange={(e) => setOptions((cur) => ({ ...cur, count: Number(e.target.value) }))}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {[1, 2, 3, 5].map((count) => (
+                          <option key={count} value={count}>{count}개</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5 text-sm font-semibold">
+                      <span>난이도</span>
+                      <select
+                        value={options.difficulty}
+                        onChange={(e) => setOptions((cur) => ({ ...cur, difficulty: e.target.value as SimilarGenerationOptions["difficulty"] }))}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        <option value="source">기준 문제와 동일</option>
+                        {difficulties.map((difficulty) => (
+                          <option key={difficulty.value} value={difficulty.value}>{difficulty.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5 text-sm font-semibold">
+                      <span>보기 개수</span>
+                      <select
+                        value={options.choiceCount}
+                        onChange={(e) => setOptions((cur) => ({ ...cur, choiceCount: Number(e.target.value) }))}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {[3, 4, 5].map((count) => (
+                          <option key={count} value={count}>{count}개</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    <ToggleOption
+                      label="해설 포함"
+                      checked={options.includeExplanation}
+                      onChange={(checked) => setOptions((cur) => ({ ...cur, includeExplanation: checked }))}
+                    />
+                    <ToggleOption
+                      label="소재 유사"
+                      checked={options.keepTopic}
+                      onChange={(checked) => setOptions((cur) => ({ ...cur, keepTopic: checked }))}
+                    />
+                    <ToggleOption
+                      label="중복 방지"
+                      checked={options.avoidDuplicate}
+                      onChange={(checked) => setOptions((cur) => ({ ...cur, avoidDuplicate: checked }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                    <h3 className="text-sm font-bold">생성 결과</h3>
+                    <span className="text-xs font-semibold text-muted-foreground">{generated.length}건</span>
+                  </div>
+                  <div className="max-h-[420px] overflow-y-auto p-3">
+                    {generated.length === 0 ? (
+                      <div className="flex h-32 items-center justify-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+                        생성 결과가 없습니다.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {generated.map((item) => (
+                          <article key={item.id} className="rounded-md border border-border bg-muted/15 p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-muted-foreground">{item.label}</p>
+                                <ReadingQuestionPreview question={item.body.question} passage={item.body.passage} size="md" />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => onUseDraft(item.body)}
+                                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                등록 폼
+                              </button>
+                            </div>
+                            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                              {(item.body.choices ?? []).map((choice, index) => (
+                                <div
+                                  key={`${item.id}-${choice}`}
+                                  className={`rounded-md border px-2.5 py-1.5 text-xs ${
+                                    choice === item.body.answer
+                                      ? "border-emerald-300 bg-emerald-50 font-semibold text-emerald-800"
+                                      : "border-border bg-background text-muted-foreground"
+                                  }`}
+                                >
+                                  {index + 1}. {choice}
+                                </div>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.body.explanation}</p>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToggleOption({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex h-10 items-center justify-between gap-3 rounded-md border border-border px-3 text-sm font-semibold">
+      <span>{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 accent-primary"
+      />
+    </label>
+  );
+}
+
+function ReadingQuestionPreview({
+  question,
+  passage,
+  size = "sm",
+}: {
+  question: string;
+  passage?: string | null;
+  size?: "sm" | "md";
+}) {
+  const split = splitQuestionPrompt(question);
+  const prompt = split.prompt;
+  const displayPassage = passage?.trim() || split.passage;
+  const promptClass = size === "md" ? "text-sm" : "text-xs";
+  const passageClass = size === "md" ? "text-sm leading-6" : "text-xs leading-5";
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">발문</p>
+        <p className={`mt-1 font-semibold ${promptClass}`}>{prompt}</p>
+      </div>
+      {displayPassage && (
+        <div className="rounded-md border border-border bg-background px-3 py-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">지문</p>
+          <p className={`mt-1 whitespace-pre-line font-medium text-foreground ${passageClass}`}>
+            {displayPassage}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1151,16 +1748,19 @@ function QuestionItem({
   onEdit,
   onEmbed,
   onShowSimilar,
+  onGenerateSimilar,
   onDelete,
 }: {
   question: QuestionResponse;
   onEdit: () => void;
   onEmbed: () => void;
   onShowSimilar: () => void;
+  onGenerateSimilar: () => void;
   onDelete: () => void;
 }) {
   const embedButtonLabel = question.embeddingStatus === "COMPLETED" ? "재임베딩" : "임베딩";
   const canShowSimilar = question.embeddingStatus === "COMPLETED";
+  const readableQuestion = splitReadingQuestion(question);
 
   return (
     <article className="rounded-lg border border-border bg-background p-4">
@@ -1176,7 +1776,7 @@ function QuestionItem({
             </span>
             <EmbeddingStatusBadge status={question.embeddingStatus} model={question.embeddingModel} />
           </div>
-          <h3 className="mt-3 text-base font-bold leading-7">{question.question}</h3>
+          <h3 className="mt-3 text-base font-bold leading-7">{readableQuestion.prompt}</h3>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
@@ -1199,6 +1799,15 @@ function QuestionItem({
           </button>
           <button
             type="button"
+            onClick={onGenerateSimilar}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-border px-3 text-sm font-semibold hover:bg-accent"
+            title="이 문제를 기준으로 독해 유사 문제 출제"
+          >
+            <FileText className="h-4 w-4" />
+            유사 출제
+          </button>
+          <button
+            type="button"
             onClick={onEdit}
             className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
             aria-label="문제 수정"
@@ -1217,6 +1826,15 @@ function QuestionItem({
           </button>
         </div>
       </div>
+
+      {readableQuestion.passage && (
+        <div className="mt-3 rounded-md border border-border bg-muted/25 px-3 py-2.5">
+          <p className="text-[11px] font-bold text-muted-foreground">지문</p>
+          <p className="mt-1.5 whitespace-pre-line text-sm font-medium leading-7 text-foreground">
+            {readableQuestion.passage}
+          </p>
+        </div>
+      )}
 
       {question.choices.length > 0 && (
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1455,7 +2073,7 @@ function SimilarQuestionsDialog({
                           {(item.similarity * 100).toFixed(1)}%
                         </span>
                       </div>
-                      <p className="mt-2 text-sm font-semibold leading-6">{item.question.question}</p>
+                      <ReadingQuestionPreview question={item.question.question} passage={item.question.passage} size="md" />
                       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.question.explanation}</p>
                     </li>
                   ))}
@@ -1470,12 +2088,19 @@ function SimilarQuestionsDialog({
 }
 
 function SimilarSummary({ question }: { question: QuestionResponse }) {
+  const readableQuestion = splitReadingQuestion(question);
   return (
     <>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <SimilarBadges question={question} />
       </div>
-      <h3 className="mt-3 text-sm font-bold leading-6">{question.question}</h3>
+      <h3 className="mt-3 text-sm font-bold leading-6">{readableQuestion.prompt}</h3>
+      {readableQuestion.passage && (
+        <div className="mt-2 rounded-md border border-border bg-background px-2.5 py-2">
+          <p className="text-[10px] font-bold uppercase text-muted-foreground">지문</p>
+          <p className="mt-1 line-clamp-4 whitespace-pre-line text-xs leading-5">{readableQuestion.passage}</p>
+        </div>
+      )}
       {question.choices.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
           {question.choices.map((c, i) => (

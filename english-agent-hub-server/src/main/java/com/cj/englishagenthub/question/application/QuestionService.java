@@ -46,6 +46,7 @@ public class QuestionService {
                 String pattern = contains(keyword);
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("question")), pattern),
+                        cb.like(cb.lower(root.get("passage")), pattern),
                         cb.like(cb.lower(root.get("answer")), pattern),
                         cb.like(cb.lower(root.get("explanation")), pattern),
                         cb.like(cb.lower(root.get("embeddingText")), pattern)
@@ -72,6 +73,7 @@ public class QuestionService {
                 category,
                 req.difficulty(),
                 req.question(),
+                req.passage(),
                 req.choices(),
                 req.answer(),
                 req.explanation(),
@@ -90,6 +92,7 @@ public class QuestionService {
                 category,
                 req.difficulty(),
                 req.question(),
+                req.passage(),
                 req.choices(),
                 req.answer(),
                 req.explanation(),

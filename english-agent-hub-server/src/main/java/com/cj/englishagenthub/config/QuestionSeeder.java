@@ -16,6 +16,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -27,10 +29,13 @@ public class QuestionSeeder implements ApplicationRunner {
     private final CategoryRepository categoryRepository;
     private final JdbcTemplate jdbcTemplate;
 
+    private static final Pattern PROMPT_TO_ENGLISH_PASSAGE = Pattern.compile("[?？]\\s+(?=[A-Z])");
+
     private record QuestionDef(
             List<String> categoryPath,
             QuestionDifficulty difficulty,
             String question,
+            String passage,
             List<String> choices,
             String answer,
             String explanation,
@@ -159,8 +164,11 @@ public class QuestionSeeder implements ApplicationRunner {
                         "다음 단어의 뜻은? \"increase\"", List.of("증가하다", "감소하다", "멈추다", "빌리다"), "증가하다",
                         "increase는 수나 양이 늘어나다, 증가하다는 뜻입니다.",
                         List.of("영어", "중등 영어", "단어", "뜻", "increase")),
-                q(List.of("영어", "중등 영어", "문장해석"), QuestionDifficulty.easy,
-                        "He is interested in science. 해석하시오.", choices("그는 과학에 관심이 있다.", "그는 과학을 가르친다.", "그는 과학을 싫어한다.", "그는 과학자가 아니다."), "그는 과학에 관심이 있다.",
+                qPassage(List.of("영어", "중등 영어", "문장해석"), QuestionDifficulty.easy,
+                        "다음 문장을 해석하시오.",
+                        "He is interested in science.",
+                        List.of("He is interested in science. 해석하시오."),
+                        choices("그는 과학에 관심이 있다.", "그는 과학을 가르친다.", "그는 과학을 싫어한다.", "그는 과학자가 아니다."), "그는 과학에 관심이 있다.",
                         "be interested in은 '~에 관심이 있다'라는 뜻입니다.",
                         List.of("영어", "중등 영어", "문장 해석", "be interested in", "science")),
                 q(List.of("영어", "중등 영어", "문법기초"), QuestionDifficulty.medium,
@@ -171,8 +179,11 @@ public class QuestionSeeder implements ApplicationRunner {
                         "다음 단어와 뜻이 가장 비슷한 것은? \"begin\"", List.of("start", "finish", "close", "forget"), "start",
                         "begin과 start는 둘 다 시작하다는 뜻입니다.",
                         List.of("영어", "고등 영어", "어휘추론", "begin", "start")),
-                q(List.of("영어", "중등 영어", "내용일치"), QuestionDifficulty.medium,
-                        "Tom walks to school every day. How does Tom go to school?", List.of("By bus", "On foot", "By bike", "By train"), "On foot",
+                qPassage(List.of("영어", "중등 영어", "내용일치"), QuestionDifficulty.medium,
+                        "How does Tom go to school?",
+                        "Tom walks to school every day.",
+                        List.of("Tom walks to school every day. How does Tom go to school?"),
+                        List.of("By bus", "On foot", "By bike", "By train"), "On foot",
                         "walks to school은 걸어서 학교에 간다는 뜻입니다.",
                         List.of("영어", "중등 영어", "내용일치", "walk", "school"))
         );
@@ -188,6 +199,7 @@ public class QuestionSeeder implements ApplicationRunner {
             Question existing = findExistingSeed(seed);
             if (existing != null) {
                 if (!existing.getQuestion().equals(seed.question())
+                        || !java.util.Objects.equals(existing.getPassage(), seed.passage())
                         || existing.getQuestionType() != type
                         || !existing.getChoices().equals(seed.choices())) {
                     existing.update(
@@ -195,6 +207,7 @@ public class QuestionSeeder implements ApplicationRunner {
                             category,
                             seed.difficulty(),
                             seed.question(),
+                            seed.passage(),
                             seed.choices(),
                             seed.answer(),
                             seed.explanation(),
@@ -210,6 +223,7 @@ public class QuestionSeeder implements ApplicationRunner {
                     category,
                     seed.difficulty(),
                     seed.question(),
+                    seed.passage(),
                     seed.choices(),
                     seed.answer(),
                     seed.explanation(),
@@ -220,6 +234,8 @@ public class QuestionSeeder implements ApplicationRunner {
         }
         if (created > 0) log.info("Seeded {} questions", created);
         if (updated > 0) log.info("Backfilled {} seeded questions to multiple-choice", updated);
+
+        backfillReadingPassages();
     }
 
     /**
@@ -229,6 +245,64 @@ public class QuestionSeeder implements ApplicationRunner {
     private void ensureVectorColumn() {
         jdbcTemplate.execute("CREATE EXTENSION IF NOT EXISTS vector");
         jdbcTemplate.execute("ALTER TABLE questions ADD COLUMN IF NOT EXISTS embedding_vector vector(1536)");
+    }
+
+    private void backfillReadingPassages() {
+        int updated = 0;
+        for (Question question : questionRepository.findAll()) {
+            if (hasText(question.getPassage()) || !isReadingQuestion(question)) {
+                continue;
+            }
+            SplitQuestion split = splitQuestion(question.getQuestion());
+            if (!hasText(split.passage())) {
+                continue;
+            }
+            question.update(
+                    question.getQuestionType(),
+                    question.getCategory(),
+                    question.getDifficulty(),
+                    split.prompt(),
+                    split.passage(),
+                    question.getChoices(),
+                    question.getAnswer(),
+                    question.getExplanation(),
+                    question.getKeywords(),
+                    null
+            );
+            updated++;
+        }
+        if (updated > 0) log.info("Backfilled {} reading passages", updated);
+    }
+
+    private boolean isReadingQuestion(Question question) {
+        String path = Question.categoryPath(question.getCategory());
+        return path.contains("내용일치")
+                || path.contains("문장해석")
+                || path.contains("어휘추론")
+                || path.contains("빈칸")
+                || path.contains("독해");
+    }
+
+    private SplitQuestion splitQuestion(String value) {
+        if (!hasText(value)) return new SplitQuestion("", "");
+        String text = value.trim();
+        String[] parts = text.split("\\n\\s*\\n", 2);
+        if (parts.length == 2) {
+            return new SplitQuestion(parts[0].trim(), parts[1].trim());
+        }
+        Matcher matcher = PROMPT_TO_ENGLISH_PASSAGE.matcher(text);
+        if (matcher.find()) {
+            int splitIndex = matcher.start() + 1;
+            return new SplitQuestion(text.substring(0, splitIndex).trim(), text.substring(splitIndex).trim());
+        }
+        return new SplitQuestion(text, "");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private record SplitQuestion(String prompt, String passage) {
     }
 
     /** 루트부터 경로를 따라 내려가며 없는 노드는 생성 */
@@ -260,7 +334,21 @@ public class QuestionSeeder implements ApplicationRunner {
             String explanation,
             List<String> keywords
     ) {
-        return new QuestionDef(categoryPath, difficulty, question, choices, answer, explanation, keywords, List.of());
+        return new QuestionDef(categoryPath, difficulty, question, null, choices, answer, explanation, keywords, List.of());
+    }
+
+    private QuestionDef qPassage(
+            List<String> categoryPath,
+            QuestionDifficulty difficulty,
+            String question,
+            String passage,
+            List<String> previousQuestions,
+            List<String> choices,
+            String answer,
+            String explanation,
+            List<String> keywords
+    ) {
+        return new QuestionDef(categoryPath, difficulty, question, passage, choices, answer, explanation, keywords, previousQuestions);
     }
 
     private QuestionDef qPrev(
@@ -273,7 +361,7 @@ public class QuestionSeeder implements ApplicationRunner {
             String explanation,
             List<String> keywords
     ) {
-        return new QuestionDef(categoryPath, difficulty, question, choices, answer, explanation, keywords, previousQuestions);
+        return new QuestionDef(categoryPath, difficulty, question, null, choices, answer, explanation, keywords, previousQuestions);
     }
 
     private Question findExistingSeed(QuestionDef seed) {

@@ -13,6 +13,7 @@ export type QuestionResponse = {
   categoryPath: string[];
   difficulty: QuestionDifficulty;
   question: string;
+  passage?: string | null;
   choices: string[];
   answer: string;
   explanation: string;
@@ -48,6 +49,7 @@ export type QuestionUpsertRequest = {
   categoryId: number | null;
   difficulty: QuestionDifficulty;
   question: string;
+  passage?: string | null;
   choices?: string[];
   answer: string;
   explanation: string;
@@ -59,6 +61,28 @@ export type QuestionListParams = {
   categoryId?: number;
   difficulty?: QuestionDifficulty | "";
   keyword?: string;
+};
+
+export type GenerateSimilarReadingQuestionRequest = {
+  templateId: string;
+  templateTitle: string;
+  subtype: string;
+  rules: string[];
+  count: number;
+  difficulty: QuestionDifficulty | "source";
+  choiceCount: number;
+  includeExplanation: boolean;
+  keepTopic: boolean;
+  avoidDuplicate: boolean;
+  categoryId?: number;
+  categoryPath?: string;
+  sourceDifficulty?: QuestionDifficulty;
+  sourceQuestion?: string;
+  sourcePassage?: string;
+  sourceChoices?: string[];
+  sourceAnswer?: string;
+  sourceExplanation?: string;
+  sourceKeywords?: string[];
 };
 
 export const questionApi = {
@@ -92,5 +116,13 @@ export const questionApi = {
   findSimilar: (id: string, limit = 10) =>
     api
       .get<SimilarQuestion[]>(`/api/questions/${id}/similar`, { params: { limit } })
+      .then((r) => r.data),
+  generateSimilarReading: (id: string, body: GenerateSimilarReadingQuestionRequest) =>
+    api
+      .post<QuestionUpsertRequest[]>(`/api/questions/${id}/generate-similar-reading`, body)
+      .then((r) => r.data),
+  generateSimilarReadingFromTemplate: (body: GenerateSimilarReadingQuestionRequest) =>
+    api
+      .post<QuestionUpsertRequest[]>(`/api/questions/generate-similar-reading`, body)
       .then((r) => r.data),
 };

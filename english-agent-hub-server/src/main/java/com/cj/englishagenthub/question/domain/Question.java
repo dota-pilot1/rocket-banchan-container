@@ -41,6 +41,9 @@ public class Question {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String question;
 
+    @Column(columnDefinition = "TEXT")
+    private String passage;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "question_choices", joinColumns = @JoinColumn(name = "question_id"))
     @Column(name = "choice", length = 500)
@@ -89,6 +92,7 @@ public class Question {
             Category category,
             QuestionDifficulty difficulty,
             String question,
+            String passage,
             List<String> choices,
             String answer,
             String explanation,
@@ -96,7 +100,7 @@ public class Question {
             String embeddingText
     ) {
         Question q = new Question();
-        q.apply(questionType, category, difficulty, question, choices, answer, explanation, keywords, embeddingText);
+        q.apply(questionType, category, difficulty, question, passage, choices, answer, explanation, keywords, embeddingText);
         return q;
     }
 
@@ -105,13 +109,14 @@ public class Question {
             Category category,
             QuestionDifficulty difficulty,
             String question,
+            String passage,
             List<String> choices,
             String answer,
             String explanation,
             List<String> keywords,
             String embeddingText
     ) {
-        apply(questionType, category, difficulty, question, choices, answer, explanation, keywords, embeddingText);
+        apply(questionType, category, difficulty, question, passage, choices, answer, explanation, keywords, embeddingText);
     }
 
     private void apply(
@@ -119,6 +124,7 @@ public class Question {
             Category category,
             QuestionDifficulty difficulty,
             String question,
+            String passage,
             List<String> choices,
             String answer,
             String explanation,
@@ -136,14 +142,15 @@ public class Question {
         }
         this.category = category;
         this.difficulty = difficulty;
-        this.question = question;
+        this.question = safe(question);
+        this.passage = StringUtils.hasText(passage) ? passage.trim() : null;
         this.choices = normalizedChoices;
-        this.answer = answer;
-        this.explanation = explanation;
+        this.answer = safe(answer);
+        this.explanation = safe(explanation);
         this.keywords = normalizeList(keywords);
         this.embeddingText = StringUtils.hasText(embeddingText)
                 ? embeddingText.trim()
-                : composeEmbeddingText(categoryPath(category), difficulty, question, answer, explanation, this.keywords);
+                : composeEmbeddingText(categoryPath(category), difficulty, this.question, this.passage, this.answer, this.explanation, this.keywords);
         String newHash = sha256(this.embeddingText);
         if (!newHash.equals(this.embeddingTextHash)) {
             this.embeddingTextHash = newHash;
@@ -185,6 +192,7 @@ public class Question {
             String categoryPath,
             QuestionDifficulty difficulty,
             String question,
+            String passage,
             String answer,
             String explanation,
             List<String> keywords
@@ -193,6 +201,7 @@ public class Question {
                 "분류: " + safe(categoryPath),
                 "난이도: " + difficultyLabel(difficulty),
                 "문제: " + safe(question),
+                "지문: " + safe(passage),
                 "정답: " + safe(answer),
                 "해설: " + safe(explanation),
                 "키워드: " + String.join(", ", normalizeList(keywords))

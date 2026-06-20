@@ -15,6 +15,7 @@ public record QuestionUpsertRequest(
         @NotNull Long categoryId,
         @NotNull QuestionDifficulty difficulty,
         @NotBlank String question,
+        String passage,
         List<String> choices,
         @NotBlank String answer,
         @NotBlank String explanation,
