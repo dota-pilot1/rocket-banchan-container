@@ -384,7 +384,7 @@ function parseStoredInstructions(stored: string | null): AgentInstructions {
 
 const REALTIME_IDLE_LIMIT_MS = 120_000;
 
-export function AgentChatClient({ agentId }: { agentId: string }) {
+export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: string; variant?: "desktop" | "mobile" }) {
   const { confirm, confirmDialog } = useConfirm();
   const [agent, setAgent] = useState<LearningAgent | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1445,7 +1445,250 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
 
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25">
-      <div className="mx-auto flex h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6">
+      {variant === "mobile" ? (
+        <div className="mx-auto flex h-[calc(100vh-3.5rem)] w-full max-w-md flex-col bg-background">
+          <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2">
+            <Link
+              href="/dashboard"
+              aria-label="대시보드로 돌아가기"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => openSettings("character")}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+            >
+              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border ${accentClass}`}>
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-bold">{agent.title}</h1>
+                <p className="truncate text-xs text-muted-foreground">{voiceStatusText}</p>
+              </div>
+            </button>
+            <button
+              type="button"
+              aria-label="캐릭터 설정"
+              onClick={() => openSettings("character")}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Settings2 className="h-4 w-4" />
+            </button>
+          </header>
+
+          <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-border px-3 py-2">
+            <button
+              type="button"
+              onClick={() => void requestSuggestedReply()}
+              disabled={suggestingReply}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {suggestingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
+              추천 답변
+            </button>
+            <button
+              type="button"
+              onClick={toggleRealtimeSession}
+              disabled={voiceStatus === "connecting"}
+              className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                voiceStatus === "connected"
+                  ? "border-destructive/40 bg-destructive/10 text-destructive"
+                  : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {voiceStatus === "connected" ? "실시간 종료" : voiceStatus === "connecting" ? "연결 중" : "실시간"}
+            </button>
+            <label className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground">
+              <Languages className="h-3.5 w-3.5 text-primary" />
+              번역
+              <Switch
+                checked={autoKoEn}
+                onCheckedChange={toggleAutoKoEn}
+                disabled={voiceStatus === "connecting"}
+                aria-label="자동 번역"
+              />
+            </label>
+            <label className="inline-flex h-8 shrink-0 items-center gap-2 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground">
+              <Volume2 className="h-3.5 w-3.5 text-primary" />
+              읽기
+              <Switch checked={autoSpeak} onCheckedChange={toggleAutoSpeak} aria-label="AI 답변 자동 읽기" />
+            </label>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4">
+            {messages.length === 0 && !sending && (
+              <div className="flex min-h-full flex-col justify-center gap-4 text-center">
+                <div>
+                  <div className={`mx-auto flex h-12 w-12 items-center justify-center rounded-full border ${accentClass}`}>
+                    <Bot className="h-6 w-6" />
+                  </div>
+                  <p className="mt-3 text-sm font-semibold">{agent.title}와 대화 시작</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{agent.sessionGoal}</p>
+                </div>
+                <div className="flex flex-col gap-2">
+                  {agent.starterPrompts.slice(0, 3).map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => {
+                        setInput(prompt);
+                        textAreaRef.current?.focus();
+                      }}
+                      className="rounded-md border border-border px-3 py-2 text-left text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {messages.map((message) => {
+              const isLearner = message.role === "learner";
+              const isTyping = !isLearner && message.streaming && !message.text.trim() && !message.sourceText;
+              const expressionSource = getExpressionSource(message);
+
+              return (
+                <div key={message.id} className={`flex ${isLearner ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[86%] rounded-lg px-3 py-2 text-sm leading-6 ${
+                      isLearner
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border bg-muted/35 text-foreground"
+                    } whitespace-pre-wrap`}
+                  >
+                    {message.sourceText ? (
+                      <div className="space-y-2 whitespace-normal">
+                        <div>
+                          <div className={`mb-1 text-[10px] font-semibold uppercase ${isLearner ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                            {message.sourceLabel ?? "원문"}
+                          </div>
+                          <div className="whitespace-pre-wrap">{message.sourceText}</div>
+                        </div>
+                        <div className={`border-t pt-2 ${isLearner ? "border-primary-foreground/20" : "border-border"}`}>
+                          <div className={`mb-1 text-[10px] font-semibold uppercase ${isLearner ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                            {message.translatedLabel ?? "번역"}
+                          </div>
+                          <div className="whitespace-pre-wrap font-medium">
+                            {message.translating ? "번역 중..." : message.translatedText}
+                          </div>
+                        </div>
+                      </div>
+                    ) : isTyping ? (
+                      <TypingDots />
+                    ) : (
+                      message.text
+                    )}
+
+                    <div className={`mt-2 flex flex-wrap gap-1.5 border-t pt-2 ${isLearner ? "border-primary-foreground/20" : "border-border"}`}>
+                      {expressionSource.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => void speakMessage(message.id, expressionSource)}
+                          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold ${
+                            isLearner
+                              ? "bg-primary-foreground/10 text-primary-foreground/85"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {speakingMessageId === message.id ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                          {speakingMessageId === message.id ? "중지" : "듣기"}
+                        </button>
+                      )}
+                      {isLearner && (
+                        <button
+                          type="button"
+                          onClick={() => void requestExpressionFeedback(message)}
+                          className="inline-flex h-7 items-center gap-1 rounded-md bg-primary-foreground/10 px-2 text-xs font-semibold text-primary-foreground/85"
+                        >
+                          <WandSparkles className="h-3.5 w-3.5" />
+                          표현
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {sending && !messages.some((m) => m.role === "agent" && m.streaming && !m.text.trim() && !m.sourceText) && (
+              <div className="flex justify-start">
+                <div className="rounded-lg border border-border bg-muted/35 px-4 py-3">
+                  <TypingDots />
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} aria-hidden="true" />
+          </div>
+
+          {expressionFeedback && (
+            <section className="shrink-0 border-t border-border bg-muted/20 px-3 py-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase text-primary">표현 피드백</p>
+                  <p className="mt-1 max-h-[3.75rem] overflow-hidden whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                    {expressionFeedback.loading
+                      ? "표현을 확인하는 중..."
+                      : getExpressionSuggestions(expressionFeedback)[0] ?? expressionFeedback.content}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="표현 피드백 닫기"
+                  onClick={() => setExpressionFeedback(null)}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </section>
+          )}
+
+          <footer className="shrink-0 border-t border-border bg-background p-3">
+            <div className="flex items-end gap-2 rounded-lg border border-border bg-muted/25 p-2">
+              <textarea
+                ref={textAreaRef}
+                rows={1}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    void sendMessage();
+                  }
+                }}
+                placeholder="메시지 입력"
+                className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted-foreground"
+              />
+              <button
+                type="button"
+                aria-label={inputListening ? "녹음 중지" : "음성 입력"}
+                onClick={toggleInputVoiceInput}
+                disabled={inputTranscribing}
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  inputListening
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+              >
+                {inputListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                aria-label="메시지 전송"
+                onClick={sendMessage}
+                disabled={!input.trim() || sending}
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </footer>
+        </div>
+      ) : (
+        <div className="mx-auto flex h-[calc(100vh-3.5rem)] w-full max-w-[1600px] flex-col px-4 py-4 sm:px-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <Link
             href="/dashboard"
@@ -1967,6 +2210,7 @@ export function AgentChatClient({ agentId }: { agentId: string }) {
           </aside>
         </section>
       </div>
+      )}
 
       {settingsOpen && (
         <div
