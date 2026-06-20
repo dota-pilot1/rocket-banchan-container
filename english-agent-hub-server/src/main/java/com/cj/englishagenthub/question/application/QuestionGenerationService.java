@@ -87,7 +87,7 @@ public class QuestionGenerationService {
 
         List<QuestionUpsertRequest> generated = parsed.questions().stream()
                 .filter(item -> isValidGeneratedQuestion(item, source, request.choiceCount()))
-                .map(item -> toUpsertRequest(item, source, difficulty, request.choiceCount(), request.includeExplanation()))
+                .map(item -> toUpsertRequest(item, source, difficulty, request.choiceCount()))
                 .limit(request.count())
                 .toList();
         if (generated.isEmpty()) {
@@ -244,15 +244,15 @@ public class QuestionGenerationService {
             GeneratedQuestion item,
             SourceQuestion source,
             QuestionDifficulty difficulty,
-            int choiceCount,
-            boolean includeExplanation
+            int choiceCount
     ) {
         List<String> choices = fitChoices(normalize(item.choices()), safe(item.answer()), choiceCount);
         String answer = safe(item.answer());
         if (choices.size() != choiceCount || !choices.contains(answer)) {
             throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
         }
-        String explanation = includeExplanation && StringUtils.hasText(item.explanation())
+        // 생성 문제는 LLM이 직접 출제하므로 해설을 항상 채운다(자기 출제라 신뢰도 높음).
+        String explanation = StringUtils.hasText(item.explanation())
                 ? item.explanation().trim()
                 : "해설은 검수 단계에서 입력하세요.";
 
@@ -335,7 +335,7 @@ public class QuestionGenerationService {
                 - Distractors must be newly written and plausible for the new passage.
                 - %s
                 - %s
-                - If explanation is requested, explain why the answer is correct in Korean.
+                - Always explain why the answer is correct in Korean (1-2 sentences), in "explanation".
                 - Make every generated question mutually distinct.
                 """.formatted(
                 candidateCount,
