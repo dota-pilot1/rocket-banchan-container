@@ -45,12 +45,20 @@ public class ExtractedSheetItem {
     @Column(name = "choice", length = 1000)
     private List<String> choices = new ArrayList<>();
 
+    /** LLM이 판단한 정답(보기 중 하나). 검수 단계에서 수정 가능. */
+    @Column(columnDefinition = "TEXT")
+    private String answer;
+
+    /** LLM이 생성한 해설(선택). */
+    @Column(columnDefinition = "TEXT")
+    private String explanation;
+
     @Column(length = 20)
     private String type;
 
     static ExtractedSheetItem of(
             ExtractedSheet sheet, int orderNo, Integer questionNumber,
-            String prompt, String passage, List<String> choices, String type
+            String prompt, String passage, List<String> choices, String answer, String explanation, String type
     ) {
         ExtractedSheetItem item = new ExtractedSheetItem();
         item.sheet = sheet;
@@ -59,6 +67,8 @@ public class ExtractedSheetItem {
         item.prompt = prompt == null ? "" : prompt.trim();
         item.passage = StringUtils.hasText(passage) ? passage.trim() : null;
         item.choices = choices == null ? new ArrayList<>() : new ArrayList<>(choices);
+        item.answer = StringUtils.hasText(answer) ? answer.trim() : null;
+        item.explanation = StringUtils.hasText(explanation) ? explanation.trim() : null;
         item.type = type;
         return item;
     }

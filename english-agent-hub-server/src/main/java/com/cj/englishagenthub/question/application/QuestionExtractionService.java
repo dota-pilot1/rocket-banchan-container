@@ -66,6 +66,8 @@ public class QuestionExtractionService {
                         q.prompt() == null ? "" : q.prompt().trim(),
                         q.passage() == null ? null : q.passage().trim(),
                         normalize(q.choices()),
+                        resolveAnswer(q),
+                        q.explanation() == null ? null : q.explanation().trim(),
                         "독해"
                 ))
                 .toList();
@@ -187,6 +189,34 @@ public class QuestionExtractionService {
         }
     }
 
+    /** LLM이 준 정답을 보기 중 하나와 매칭해 정확한 보기 문자열로 정규화한다. */
+    private String resolveAnswer(ExtractedQuestion q) {
+        if (q.choices() == null || !StringUtils.hasText(q.answer())) return null;
+        String ans = q.answer().trim();
+        List<String> choices = normalize(q.choices());
+        for (String c : choices) {
+            if (c.equalsIgnoreCase(ans)) return c;
+        }
+        for (String c : choices) {
+            if (c.replaceAll("\\s", "").equalsIgnoreCase(ans.replaceAll("\\s", ""))) return c;
+        }
+        Integer idx = markerIndex(ans);
+        if (idx != null && idx >= 1 && idx <= choices.size()) return choices.get(idx - 1);
+        for (String c : choices) {
+            if (c.toLowerCase().contains(ans.toLowerCase())) return c;
+        }
+        return ans;
+    }
+
+    private Integer markerIndex(String s) {
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        int m = "①②③④⑤".indexOf(t.charAt(0));
+        if (m >= 0) return m + 1;
+        if (t.charAt(0) >= '1' && t.charAt(0) <= '5') return t.charAt(0) - '0';
+        return null;
+    }
+
     private boolean isUsable(ExtractedQuestion q) {
         return StringUtils.hasText(q.prompt())
                 && q.choices() != null
@@ -203,12 +233,15 @@ public class QuestionExtractionService {
                 - Reading types include ALL of: 목적/심경/주장/밑줄의미/요지/주제/제목/내용일치/안내문/어법/어휘/빈칸추론/무관한문장/글의순서/문장삽입/요약문, and the long passage sets (e.g. 41~42, 43~45). Include every one.
                 - For a passage shared by a set (41~42, 43~45), repeat the full passage on each question in that set.
                 - Keep each English passage verbatim. If a question has no passage, use "".
-                - Do not invent answers; the paper has no answer key.
+
+                SOLVE each question: the paper has no answer key, so you must determine the correct answer yourself.
+                - "answer": the FULL text of the correct choice, exactly as written in "choices".
+                - "explanation": a brief Korean explanation of why that answer is correct (1-2 sentences).
 
                 Return only valid JSON, no markdown:
                 {
                   "questions": [
-                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."] }
+                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."], "answer": "정답 보기 전체 문자열", "explanation": "한국어 해설" }
                   ]
                 }
                 """;
@@ -233,11 +266,11 @@ public class QuestionExtractionService {
                 - EXCLUDE listening questions: any whose Korean prompt contains 듣고/대화를 듣고/다음을 듣고/방송.
                 - Keep the English passage verbatim, or "" if none on this page.
                 - A question must include its choices (보기 ①~⑤). Include what is present even if partly cut off.
-                - Do not invent answers.
+                - SOLVE each question yourself: "answer" = the full text of the correct choice (exactly as in "choices"); "explanation" = brief Korean reason (1-2 sentences).
                 Return only valid JSON, no markdown:
                 {
                   "questions": [
-                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."] }
+                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."], "answer": "정답 보기 전체 문자열", "explanation": "한국어 해설" }
                   ]
                 }
                 If this page has no reading question, return {"questions": []}.
@@ -285,6 +318,7 @@ public class QuestionExtractionService {
     private record ExtractedList(List<ExtractedQuestion> questions) {
     }
 
-    private record ExtractedQuestion(Integer number, String prompt, String passage, List<String> choices) {
+    private record ExtractedQuestion(Integer number, String prompt, String passage, List<String> choices,
+                                     String answer, String explanation) {
     }
 }

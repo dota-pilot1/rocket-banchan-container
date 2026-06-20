@@ -37,7 +37,8 @@ public class ExtractedSheetService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         List<ExtractedSheet.ItemSpec> specs = extracted.stream()
-                .map(q -> new ExtractedSheet.ItemSpec(q.number(), q.prompt(), q.passage(), q.choices(), q.type()))
+                .map(q -> new ExtractedSheet.ItemSpec(q.number(), q.prompt(), q.passage(), q.choices(),
+                        q.answer(), q.explanation(), q.type()))
                 .toList();
 
         ExtractedSheet sheet = ExtractedSheet.create(creator, deriveTitle(file.getOriginalFilename()), file.getOriginalFilename(), specs);

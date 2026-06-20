@@ -11,6 +11,8 @@ public record ExtractedQuestionResponse(
         String prompt,
         String passage,
         List<String> choices,
+        String answer,
+        String explanation,
         String type
 ) {
 }

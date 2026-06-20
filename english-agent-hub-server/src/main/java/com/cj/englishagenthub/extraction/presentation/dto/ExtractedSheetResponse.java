@@ -20,6 +20,8 @@ public record ExtractedSheetResponse(
             String prompt,
             String passage,
             List<String> choices,
+            String answer,
+            String explanation,
             String type
     ) {
         static Item from(ExtractedSheetItem item) {
@@ -28,6 +30,8 @@ public record ExtractedSheetResponse(
                     item.getPrompt(),
                     item.getPassage(),
                     item.getChoices(),
+                    item.getAnswer(),
+                    item.getExplanation(),
                     item.getType()
             );
         }

@@ -54,7 +54,8 @@ public class ExtractedSheet {
         int order = 1;
         for (ItemSpec spec : specs) {
             sheet.items.add(ExtractedSheetItem.of(
-                    sheet, order++, spec.questionNumber(), spec.prompt(), spec.passage(), spec.choices(), spec.type()
+                    sheet, order++, spec.questionNumber(), spec.prompt(), spec.passage(),
+                    spec.choices(), spec.answer(), spec.explanation(), spec.type()
             ));
         }
         return sheet;
@@ -65,5 +66,6 @@ public class ExtractedSheet {
     }
 
     /** 문항 구성 입력값. */
-    public record ItemSpec(Integer questionNumber, String prompt, String passage, List<String> choices, String type) {}
+    public record ItemSpec(Integer questionNumber, String prompt, String passage, List<String> choices,
+                           String answer, String explanation, String type) {}
 }

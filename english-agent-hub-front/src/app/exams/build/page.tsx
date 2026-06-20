@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  FileText,
   Loader2,
   Plus,
   Save,
@@ -22,8 +23,10 @@ import { examApi } from "@/entities/exam/api/examApi";
 import {
   questionApi,
   type QuestionDifficulty,
+  type QuestionResponse,
   type QuestionType,
 } from "@/entities/question/api/questionApi";
+import { ExamPdfExtractDialog } from "@/features/question-generator/ExamPdfExtractDialog";
 import {
   buildCategoryTree,
   categoryApi,
@@ -68,6 +71,7 @@ function ExamBuilder() {
   const [difficulty, setDifficulty] = useState<QuestionDifficulty | "">("");
   const [keyword, setKeyword] = useState("");
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [pdfOpen, setPdfOpen] = useState(false);
 
   const { data: exam, isLoading: examLoading } = useQuery({
     queryKey: ["exam", examId],
@@ -80,6 +84,12 @@ function ExamBuilder() {
     queryFn: () => categoryApi.list(),
   });
   const categoryTree = useMemo(() => buildCategoryTree(categoryRecords), [categoryRecords]);
+
+  // PDF 추출 문항 등록 대상: 영어 > 독해
+  const readingCategoryId = useMemo(() => {
+    const eng = categoryTree.find((r) => r.name === "영어");
+    return eng?.children.find((c) => c.name === "독해")?.id ?? null;
+  }, [categoryTree]);
 
   // 카테고리 id → 그 노드가 속한 최상위(과목) id
   const rootIdByCategoryId = useMemo(() => {
@@ -229,6 +239,28 @@ function ExamBuilder() {
       return [...cur, ...additions];
     });
     setCheckedIds(new Set());
+  };
+
+  // PDF 추출 다이얼로그에서 등록된 문제 은행 문항을 시험지에 추가
+  const addCreatedQuestions = (created: QuestionResponse[]) => {
+    setSelected((cur) => {
+      const has = new Set(cur.map((s) => s.questionId));
+      const additions = created
+        .filter((q) => !has.has(q.id))
+        .map<SelItem>((q) => ({
+          questionId: q.id,
+          question: q.question,
+          passage: q.passage ?? null,
+          questionType: q.questionType,
+          difficulty: q.difficulty,
+          categoryPath: q.categoryPath,
+          choices: q.choices,
+          answer: q.answer,
+          points: 10,
+        }));
+      return [...cur, ...additions];
+    });
+    qc.invalidateQueries({ queryKey: ["questions"] });
   };
 
   const toggleChecked = (id: string) =>
@@ -501,10 +533,29 @@ function ExamBuilder() {
 
           {/* 선택된 문항 */}
           <section className="flex min-h-0 flex-col rounded-lg border border-border bg-background p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-base font-bold">시험지 문항 ({selected.length})</h2>
-              <span className="text-sm font-semibold text-muted-foreground">총점 {totalPoints}점</span>
+              <div className="flex items-center gap-2">
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={() => setPdfOpen(true)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold hover:bg-accent"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    PDF 추출
+                  </button>
+                )}
+                <span className="text-sm font-semibold text-muted-foreground">총점 {totalPoints}점</span>
+              </div>
             </div>
+
+            <ExamPdfExtractDialog
+              open={pdfOpen}
+              onClose={() => setPdfOpen(false)}
+              readingCategoryId={readingCategoryId}
+              onAdded={addCreatedQuestions}
+            />
 
             <div className="mt-3 max-h-[64vh] space-y-2 overflow-y-auto pr-1">
               {selected.length === 0 ? (

@@ -52,6 +52,10 @@ public class ExamCategory {
         this.name = name.trim();
     }
 
+    public void reorder(int displayOrder) {
+        this.displayOrder = displayOrder;
+    }
+
     public Long getParentId() {
         return parent == null ? null : parent.getId();
     }

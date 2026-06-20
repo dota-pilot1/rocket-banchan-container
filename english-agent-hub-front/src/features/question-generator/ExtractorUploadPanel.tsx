@@ -290,10 +290,28 @@ function SheetDetailModal({
                     </p>
                   )}
                   <ul className="mt-2 space-y-1 text-sm">
-                    {item.choices.map((choice, ci) => (
-                      <li key={ci} className="text-foreground">{choice}</li>
-                    ))}
+                    {item.choices.map((choice, ci) => {
+                      const isAnswer = item.answer != null && choice.trim() === item.answer.trim();
+                      return (
+                        <li
+                          key={ci}
+                          className={
+                            isAnswer
+                              ? "rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-800"
+                              : "px-2 py-1 text-foreground"
+                          }
+                        >
+                          {choice}
+                          {isAnswer && <span className="ml-2 text-[10px] font-bold text-emerald-700">AI 정답</span>}
+                        </li>
+                      );
+                    })}
                   </ul>
+                  {item.explanation && (
+                    <p className="mt-2 rounded border border-border bg-background p-2 text-xs leading-5 text-muted-foreground">
+                      <span className="font-semibold text-foreground">해설</span> · {item.explanation}
+                    </p>
+                  )}
                 </li>
               ))}
             </ol>

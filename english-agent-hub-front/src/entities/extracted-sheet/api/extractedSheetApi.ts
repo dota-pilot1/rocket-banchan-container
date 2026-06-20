@@ -5,6 +5,10 @@ export type ExtractedSheetItem = {
   prompt: string;
   passage: string | null;
   choices: string[];
+  /** LLM이 판단한 정답 (보기 중 하나). 검수 권장. */
+  answer: string | null;
+  /** LLM이 생성한 해설. */
+  explanation: string | null;
   type: string;
 };
 

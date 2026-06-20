@@ -26,16 +26,19 @@ public class ExamCategorySeeder implements ApplicationRunner {
     private final ExamCategoryRepository examCategoryRepository;
     private final ExamRepository examRepository;
 
-    private static final List<String> ENGLISH_AREAS = List.of("어휘", "어법", "독해", "듣기");
-    private static final List<String> MATH_UNITS = List.of("대수", "미적분Ⅰ", "확률과 통계", "기하");
+    // 시험지는 여러 영역을 묶은 '종합' 평가가 기본이라 과목별 종합 분류를 둔다. (종합은 맨 뒤)
+    private static final List<String> ENGLISH_AREAS = List.of("어휘", "어법", "독해", "듣기", "종합");
+    private static final List<String> MATH_UNITS = List.of("대수", "미적분Ⅰ", "확률과 통계", "기하", "종합");
 
     private static final Set<String> ALLOWED_CATEGORY_PATHS = Set.of(
             "영어",
+            "영어 > 종합",
             "영어 > 어휘",
             "영어 > 어법",
             "영어 > 독해",
             "영어 > 듣기",
             "수학",
+            "수학 > 종합",
             "수학 > 대수",
             "수학 > 미적분Ⅰ",
             "수학 > 확률과 통계",
@@ -45,32 +48,35 @@ public class ExamCategorySeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        for (String area : ENGLISH_AREAS) {
-            ensurePath(List.of("영어", area));
-        }
-        for (String unit : MATH_UNITS) {
-            ensurePath(List.of("수학", unit));
-        }
+        // 루트 순서: 영어(0), 수학(1). 자식은 리스트 인덱스대로 displayOrder를 명시·갱신해 순서를 고정한다.
+        ExamCategory english = ensureRoot("영어", 0);
+        ExamCategory math = ensureRoot("수학", 1);
+        ensureChildren(english, ENGLISH_AREAS);
+        ensureChildren(math, MATH_UNITS);
         cleanupUnexpectedCategories();
     }
 
-    private ExamCategory ensurePath(List<String> path) {
-        ExamCategory current = null;
-        for (String name : path) {
-            Long parentId = current == null ? null : current.getId();
-            ExamCategory found = (parentId == null
-                    ? examCategoryRepository.findFirstByParentIsNullAndName(name)
-                    : examCategoryRepository.findFirstByParent_IdAndName(parentId, name))
-                    .orElse(null);
-            if (found == null) {
-                long siblings = parentId == null
-                        ? examCategoryRepository.countByParentIsNull()
-                        : examCategoryRepository.countByParent_Id(parentId);
-                found = examCategoryRepository.save(ExamCategory.create(current, name, (int) siblings));
-            }
-            current = found;
+    private ExamCategory ensureRoot(String name, int displayOrder) {
+        ExamCategory root = examCategoryRepository.findFirstByParentIsNullAndName(name).orElse(null);
+        if (root == null) {
+            return examCategoryRepository.save(ExamCategory.create(null, name, displayOrder));
         }
-        return current;
+        if (root.getDisplayOrder() != displayOrder) {
+            root.reorder(displayOrder);
+        }
+        return root;
+    }
+
+    private void ensureChildren(ExamCategory parent, List<String> names) {
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.get(i);
+            ExamCategory child = examCategoryRepository.findFirstByParent_IdAndName(parent.getId(), name).orElse(null);
+            if (child == null) {
+                examCategoryRepository.save(ExamCategory.create(parent, name, i));
+            } else if (child.getDisplayOrder() != i) {
+                child.reorder(i);
+            }
+        }
     }
 
     /** 허용 경로 밖의 시험지 분류를 자식·참조가 없을 때 정리한다. */
