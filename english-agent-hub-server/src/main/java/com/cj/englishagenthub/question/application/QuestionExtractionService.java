@@ -23,6 +23,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 시험지 PDF에서 독해(읽기) 문항만 추출한다.
@@ -82,33 +85,45 @@ public class QuestionExtractionService {
         return result;
     }
 
-    // ── Gemini: 시험지 전체 단일 호출 ──────────────────────────────────────
+    // ── Gemini: 페이지 단위 '병렬' 호출 ────────────────────────────────────
+    // 한 번에 통짜로 뽑으면 출력이 커서 느리고(프록시 타임아웃), 청크를 순차로 돌리면 합산이 길다.
+    // 페이지를 동시에 호출해 wall-clock을 최단으로 줄인다.
     private List<ExtractedQuestion> extractWithGemini(List<String> pages) {
-        StringBuilder full = new StringBuilder();
-        for (int i = 0; i < pages.size(); i++) {
-            if (!StringUtils.hasText(pages.get(i))) continue;
-            full.append("\n\n===== PAGE ").append(i + 1).append(" =====\n").append(pages.get(i));
-        }
         ChatClient client = openAiClientResolver.chatClientFor(geminiApiKey, geminiBaseUrl).build();
-        String content;
+        int concurrency = Math.min(5, Math.max(1, pages.size()));
+        ExecutorService pool = Executors.newFixedThreadPool(concurrency);
         try {
-            content = client.prompt()
-                    .options(OpenAiChatOptions.builder()
-                            .model(geminiModel)
-                            .maxCompletionTokens(32000))
-                    .system(wholeExamSystemPrompt())
-                    .user(wholeExamUserPrompt(full.toString()))
-                    .call()
-                    .content();
-        } catch (Exception e) {
-            log.warn("Gemini extraction call failed: {}", e.getMessage());
-            throw new BusinessException(ErrorCode.AI_REQUEST_FAILED);
+            List<CompletableFuture<List<ExtractedQuestion>>> futures = new ArrayList<>();
+            for (int i = 0; i < pages.size(); i++) {
+                String pageText = pages.get(i);
+                if (!StringUtils.hasText(pageText)) continue;
+                int pageNo = i + 1;
+                futures.add(CompletableFuture.supplyAsync(
+                        () -> extractPage(client, geminiModel, pageText, pageNo), pool));
+            }
+            List<ExtractedQuestion> all = new ArrayList<>();
+            for (CompletableFuture<List<ExtractedQuestion>> f : futures) {
+                try {
+                    all.addAll(f.get());
+                } catch (Exception e) {
+                    log.warn("Gemini page extraction failed: {}", e.getMessage());
+                }
+            }
+            return dedup(all);
+        } finally {
+            pool.shutdown();
         }
-        ExtractedList parsed = parseQuiet(content, 0);
-        if (parsed == null || parsed.questions() == null) {
-            return List.of();
-        }
-        return dedup(parsed.questions());
+    }
+
+    private List<ExtractedQuestion> extractPage(ChatClient client, String model, String pageText, int pageNo) {
+        String content = client.prompt()
+                .options(OpenAiChatOptions.builder().model(model).maxCompletionTokens(8000))
+                .system(pageSystemPrompt())
+                .user(pageUserPrompt(pageText, pageNo))
+                .call()
+                .content();
+        ExtractedList parsed = parseQuiet(content, pageNo);
+        return (parsed != null && parsed.questions() != null) ? parsed.questions() : List.of();
     }
 
     // ── OpenAI: 페이지 단위 청크 추출(폴백) ─────────────────────────────────
@@ -221,41 +236,6 @@ public class QuestionExtractionService {
         return StringUtils.hasText(q.prompt())
                 && q.choices() != null
                 && q.choices().stream().filter(StringUtils::hasText).count() >= 2;
-    }
-
-    private String wholeExamSystemPrompt() {
-        return """
-                You extract reading-comprehension questions from a full Korean high-school English exam (수능/모의고사) given as raw text across several pages.
-
-                CRITICAL — completeness:
-                - Extract EVERY reading question, from the first reading question through the LAST one on the paper. Do not skip any.
-                - The listening section comes first; the exam states its range (e.g. "1번부터 17번까지는 듣고 답하는 문제입니다"). EXCLUDE only those listening questions. Everything after is reading — include all of it.
-                - Reading types include ALL of: 목적/심경/주장/밑줄의미/요지/주제/제목/내용일치/안내문/어법/어휘/빈칸추론/무관한문장/글의순서/문장삽입/요약문, and the long passage sets (e.g. 41~42, 43~45). Include every one.
-                - For a passage shared by a set (41~42, 43~45), repeat the full passage on each question in that set.
-                - Keep each English passage verbatim. If a question has no passage, use "".
-
-                SOLVE each question: the paper has no answer key, so you must determine the correct answer yourself.
-                - "answer": the FULL text of the correct choice, exactly as written in "choices".
-                - "explanation": a brief Korean explanation of why that answer is correct (1-2 sentences).
-
-                Return only valid JSON, no markdown:
-                {
-                  "questions": [
-                    { "number": 21, "prompt": "한국어 발문", "passage": "English passage verbatim or \\"\\"", "choices": ["①...","②...","③...","④...","⑤..."], "answer": "정답 보기 전체 문자열", "explanation": "한국어 해설" }
-                  ]
-                }
-                """;
-    }
-
-    private String wholeExamUserPrompt(String fullText) {
-        return """
-                Extract ALL reading questions from this exam — every question after the listening section, in order, none skipped.
-                Before finishing, find the highest question number in the text and make sure your output includes every reading number up to it.
-
-                === EXAM TEXT START ===
-                %s
-                === EXAM TEXT END ===
-                """.formatted(fullText);
     }
 
     private String pageSystemPrompt() {
