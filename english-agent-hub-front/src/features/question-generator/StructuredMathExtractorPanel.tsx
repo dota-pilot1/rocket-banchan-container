@@ -37,7 +37,20 @@ export function StructuredMathExtractorPanel() {
   });
 
   const createMutation = useMutation({
-    mutationFn: () => structuredMathSheetApi.create(problem as File, answer),
+    // 정형 추출은 문항별 Vision 전사라 60~70초 걸려, 게이트웨이(CloudFront 30s)가 504를 줄 수 있다.
+    // 백엔드는 504 후에도 끝까지 저장하므로, 요청은 쏘되 결과는 '목록 폴링'으로 받는다.
+    mutationFn: async (): Promise<StructuredMathSheet> => {
+      const before = new Set((await structuredMathSheetApi.list()).map((s) => s.id));
+      structuredMathSheetApi.create(problem as File, answer).catch(() => undefined); // 504여도 무시
+      const deadline = Date.now() + 6 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const sheets = await structuredMathSheetApi.list().catch(() => [] as StructuredMathSheet[]);
+        const fresh = sheets.find((s) => !before.has(s.id));
+        if (fresh) return fresh;
+      }
+      throw new Error("추출이 시간 내에 끝나지 않았습니다.");
+    },
     onSuccess: (sheet) => {
       toast.success(`"${sheet.title}" 정형 추출 완료 — ${sheet.itemCount}문항`);
       qc.invalidateQueries({ queryKey: ["structured-math-sheets"] });
