@@ -4,6 +4,8 @@ import com.cj.englishagenthub.common.exception.BusinessException;
 import com.cj.englishagenthub.common.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
@@ -20,6 +22,24 @@ public class UploadService {
 
     private final S3Properties props;
     private final S3Presigner presigner;
+    private final S3Client s3Client;
+
+    /** 서버에서 직접 바이트를 S3에 올리고 공개 URL을 돌려준다. (presign 클라이언트 업로드와 달리 서버측 PUT) */
+    public String putBytes(byte[] bytes, String contentType, String folder, String filename) {
+        if (!props.isConfigured()) {
+            throw new BusinessException(ErrorCode.UPLOAD_NOT_CONFIGURED);
+        }
+        String objectKey = buildKey(folder, sanitize(filename));
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(props.bucket())
+                        .key(objectKey)
+                        .contentType(contentType)
+                        .build(),
+                RequestBody.fromBytes(bytes)
+        );
+        return buildPublicUrl(objectKey);
+    }
 
     public PresignResponse presign(String filename, String contentType, String folder) {
         if (!props.isConfigured()) {
