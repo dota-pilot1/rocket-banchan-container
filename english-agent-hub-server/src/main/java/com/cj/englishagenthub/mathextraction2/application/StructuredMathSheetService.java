@@ -1,6 +1,5 @@
 package com.cj.englishagenthub.mathextraction2.application;
 
-import com.cj.englishagenthub.auth.security.UserPrincipal;
 import com.cj.englishagenthub.common.exception.BusinessException;
 import com.cj.englishagenthub.common.exception.ErrorCode;
 import com.cj.englishagenthub.mathextraction2.domain.StructuredMathSheet;
@@ -12,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -21,17 +19,15 @@ import java.util.List;
 public class StructuredMathSheetService {
 
     private final StructuredMathSheetRepository repository;
-    private final StructuredMathExtractionService extractionService;
     private final UserRepository userRepository;
 
+    /** 추출이 끝난 specs를 짧은 트랜잭션으로 영속한다(Vision은 트랜잭션 밖에서 끝났다). */
     @Transactional
-    public StructuredMathSheetResponse createFromPdf(UserPrincipal principal, MultipartFile problemPdf, MultipartFile answerPdf) {
-        List<StructuredMathSheet.ItemSpec> specs = extractionService.extract(problemPdf, answerPdf);
-        User creator = userRepository.findById(principal.getId())
+    public String saveSheet(Long userId, String fileName, List<StructuredMathSheet.ItemSpec> specs) {
+        User creator = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
-        StructuredMathSheet sheet = StructuredMathSheet.create(
-                creator, deriveTitle(problemPdf.getOriginalFilename()), problemPdf.getOriginalFilename(), specs);
-        return StructuredMathSheetResponse.from(repository.save(sheet));
+        StructuredMathSheet sheet = StructuredMathSheet.create(creator, deriveTitle(fileName), fileName, specs);
+        return repository.save(sheet).getId();
     }
 
     @Transactional(readOnly = true)

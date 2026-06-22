@@ -21,7 +21,6 @@ import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -61,19 +60,28 @@ public class StructuredMathExtractionService {
     @Value("${gemini.model:gemini-2.5-flash}")
     private String geminiModel;
 
-    public List<StructuredMathSheet.ItemSpec> extract(MultipartFile problemPdf, MultipartFile answerPdf) {
+    /** 진행률 보고용 콜백. */
+    public interface ProgressListener {
+        void onTotal(int total);
+        void onItemDone();
+        ProgressListener NOOP = new ProgressListener() {
+            public void onTotal(int total) {}
+            public void onItemDone() {}
+        };
+    }
+
+    /** bytes 기반(비동기 잡에서 호출). 트랜잭션 밖에서 실행되며 진행률을 콜백으로 보고한다. */
+    public List<StructuredMathSheet.ItemSpec> extract(byte[] problemBytes, byte[] answerBytes, ProgressListener progress) {
         if (!StringUtils.hasText(geminiApiKey)) {
             throw new BusinessException(ErrorCode.MATH_EXTRACTION_NO_VISION);
         }
         long t0 = System.currentTimeMillis();
-        byte[] problemBytes = readBytes(problemPdf);
 
         List<ParsedQuestion> questions = layoutParser.parse(problemBytes);
         if (questions.isEmpty()) throw new BusinessException(ErrorCode.MATH_EXTRACTION_NONE);
+        progress.onTotal(questions.size());
 
-        boolean hasAnswer = answerPdf != null && !answerPdf.isEmpty();
-        byte[] answerBytes = hasAnswer ? readBytes(answerPdf) : null;
-        CompletableFuture<Map<String, AnswerInfo>> answerFuture = answerBytes != null
+        CompletableFuture<Map<String, AnswerInfo>> answerFuture = (answerBytes != null && answerBytes.length > 0)
                 ? CompletableFuture.supplyAsync(() -> readAnswerKey(answerBytes))
                 : CompletableFuture.completedFuture(Map.of());
 
@@ -87,8 +95,12 @@ public class StructuredMathExtractionService {
             List<CompletableFuture<Void>> futures = new ArrayList<>();
             for (ParsedQuestion q : questions) {
                 futures.add(CompletableFuture.runAsync(() -> {
-                    StructuredMathSheet.ItemSpec spec = transcribe(client, q, answers);
-                    if (spec != null) specs.add(spec);
+                    try {
+                        StructuredMathSheet.ItemSpec spec = transcribe(client, q, answers);
+                        if (spec != null) specs.add(spec);
+                    } finally {
+                        progress.onItemDone();
+                    }
                 }, pool));
             }
             for (CompletableFuture<Void> f : futures) {
@@ -108,8 +120,7 @@ public class StructuredMathExtractionService {
             int nb = b.questionNumber() == null ? Integer.MAX_VALUE : b.questionNumber();
             return Integer.compare(na, nb);
         });
-        log.info("Structured-extracted {} math questions from {} in {}ms",
-                specs.size(), problemPdf.getOriginalFilename(), System.currentTimeMillis() - t0);
+        log.info("Structured-extracted {} math questions in {}ms", specs.size(), System.currentTimeMillis() - t0);
         return specs;
     }
 
@@ -255,15 +266,6 @@ public class StructuredMathExtractionService {
             case "기하" -> 3;
             default -> 9;
         };
-    }
-
-    private byte[] readBytes(MultipartFile f) {
-        if (f == null || f.isEmpty()) throw new BusinessException(ErrorCode.EXTRACTION_EMPTY_TEXT);
-        try {
-            return f.getBytes();
-        } catch (Exception e) {
-            throw new BusinessException(ErrorCode.EXTRACTION_PDF_READ_FAILED);
-        }
     }
 
     private BufferedImage scaleToWidth(BufferedImage src, int maxWidth) {

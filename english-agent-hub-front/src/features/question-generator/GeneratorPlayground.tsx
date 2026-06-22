@@ -25,7 +25,7 @@ type GeneratorPlaygroundProps = {
 export function GeneratorPlayground({ title, description, icon: Icon, strategies, extra }: GeneratorPlaygroundProps) {
   return (
     <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25 px-4 py-5">
-      <div className="mx-auto w-full max-w-[1100px] space-y-6">
+      <div className="mx-auto w-full max-w-[1280px] space-y-6">
         <section className="border-b border-border pb-5">
           <div className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-semibold text-muted-foreground">
             <Icon className="h-4 w-4" />

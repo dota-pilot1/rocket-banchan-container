@@ -1,11 +1,16 @@
 package com.cj.englishagenthub.mathextraction2.presentation;
 
 import com.cj.englishagenthub.auth.security.UserPrincipal;
+import com.cj.englishagenthub.common.exception.BusinessException;
+import com.cj.englishagenthub.common.exception.ErrorCode;
+import com.cj.englishagenthub.mathextraction2.application.StructuredMathJobService;
 import com.cj.englishagenthub.mathextraction2.application.StructuredMathSheetService;
+import com.cj.englishagenthub.mathextraction2.presentation.dto.StructuredMathJobResponse;
 import com.cj.englishagenthub.mathextraction2.presentation.dto.StructuredMathSheetResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,7 +18,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/structured-math-sheets")
@@ -23,15 +30,31 @@ import java.util.List;
 public class StructuredMathSheetController {
 
     private final StructuredMathSheetService service;
+    private final StructuredMathJobService jobService;
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "수학 PDF 업로드 → 문항별 LaTeX 전사 + 도형 분리 → 정형 시험지로 저장")
-    public StructuredMathSheetResponse create(
+    @Operation(summary = "수학 PDF 업로드 → 비동기 정형 추출 잡 시작 (202 + jobId)")
+    public ResponseEntity<Map<String, String>> create(
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "answerFile", required = false) MultipartFile answerFile
     ) {
-        return service.createFromPdf(principal, file, answerFile);
+        try {
+            byte[] problem = file.getBytes();
+            byte[] answer = (answerFile != null && !answerFile.isEmpty()) ? answerFile.getBytes() : null;
+            String jobId = jobService.submit(principal.getId(), problem, file.getOriginalFilename(), answer);
+            return ResponseEntity.accepted().body(Map.of("jobId", jobId));
+        } catch (IOException e) {
+            throw new BusinessException(ErrorCode.EXTRACTION_PDF_READ_FAILED);
+        }
+    }
+
+    @GetMapping("/jobs/{jobId}")
+    @Operation(summary = "정형 추출 잡 상태 (폴링용)")
+    public StructuredMathJobResponse jobStatus(@PathVariable String jobId) {
+        StructuredMathJobService.Job job = jobService.get(jobId);
+        if (job == null) throw new BusinessException(ErrorCode.EXTRACTED_MATH_SHEET_NOT_FOUND);
+        return StructuredMathJobResponse.from(job);
     }
 
     @GetMapping

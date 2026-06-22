@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, FunctionSquare, Loader2, Trash2, Upload, X } from "lucide-react";
 import {
@@ -36,28 +36,39 @@ export function StructuredMathExtractorPanel() {
     enabled: openId != null,
   });
 
-  const createMutation = useMutation({
-    // 정형 추출은 문항별 Vision 전사라 60~70초 걸려, 게이트웨이(CloudFront 30s)가 504를 줄 수 있다.
-    // 백엔드는 504 후에도 끝까지 저장하므로, 요청은 쏘되 결과는 '목록 폴링'으로 받는다.
-    mutationFn: async (): Promise<StructuredMathSheet> => {
-      const before = new Set((await structuredMathSheetApi.list()).map((s) => s.id));
-      structuredMathSheetApi.create(problem as File, answer).catch(() => undefined); // 504여도 무시
-      const deadline = Date.now() + 6 * 60 * 1000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 4000));
-        const sheets = await structuredMathSheetApi.list().catch(() => [] as StructuredMathSheet[]);
-        const fresh = sheets.find((s) => !before.has(s.id));
-        if (fresh) return fresh;
-      }
-      throw new Error("추출이 시간 내에 끝나지 않았습니다.");
-    },
-    onSuccess: (sheet) => {
-      toast.success(`"${sheet.title}" 정형 추출 완료 — ${sheet.itemCount}문항`);
-      qc.invalidateQueries({ queryKey: ["structured-math-sheets"] });
-      setOpenId(sheet.id);
-    },
-    onError: (e) => toastError(e, "정형 추출에 실패했습니다."),
+  // 비동기 잡(Async Request-Reply): POST는 즉시 jobId를 받고, 상태를 폴링한다.
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  const startMutation = useMutation({
+    mutationFn: () => structuredMathSheetApi.startJob(problem as File, answer),
+    onSuccess: (id) => setJobId(id),
+    onError: (e) => toastError(e, "정형 추출 시작에 실패했습니다."),
   });
+
+  const { data: job } = useQuery({
+    queryKey: ["structured-job", jobId],
+    queryFn: () => structuredMathSheetApi.getJob(jobId as string),
+    enabled: jobId != null,
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "DONE" || s === "FAILED" ? false : 2500;
+    },
+  });
+
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === "DONE" && job.sheetId) {
+      toast.success("정형 추출 완료");
+      qc.invalidateQueries({ queryKey: ["structured-math-sheets"] });
+      setOpenId(job.sheetId);
+      setJobId(null);
+    } else if (job.status === "FAILED") {
+      toast.error(job.error || "정형 추출에 실패했습니다.");
+      setJobId(null);
+    }
+  }, [job, qc]);
+
+  const running = startMutation.isPending || (jobId != null && job?.status !== "DONE" && job?.status !== "FAILED");
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => structuredMathSheetApi.delete(id),
@@ -114,21 +125,26 @@ export function StructuredMathExtractorPanel() {
           </div>
           <button
             type="button"
-            disabled={!problemIsPdf || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!problemIsPdf || running}
+            onClick={() => startMutation.mutate()}
             className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FunctionSquare className="h-4 w-4" />}
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <FunctionSquare className="h-4 w-4" />}
             정형 추출 (LaTeX)
           </button>
           {problem && !problemIsPdf && <p className="mt-2 text-xs text-destructive">문제 파일은 PDF만 지원합니다.</p>}
         </aside>
       </div>
 
-      {createMutation.isPending && (
+      {running && (
         <div className="flex items-center gap-2 rounded-lg border border-border bg-background p-5 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          문항별로 수식을 LaTeX로 전사하는 중입니다… (느릴 수 있어요)
+          문항별로 수식을 LaTeX로 전사하는 중입니다…
+          {job && job.total > 0 && (
+            <span className="font-semibold text-foreground">
+              {job.done}/{job.total}
+            </span>
+          )}
         </div>
       )}
 

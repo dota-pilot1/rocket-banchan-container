@@ -21,23 +21,34 @@ const formatBytes = (bytes: number) => {
   return `${(kb / 1024).toFixed(1)} MB`;
 };
 
+const getFileKind = (selectedFile: SelectedFile | null) => {
+  if (!selectedFile) return null;
+  if (selectedFile.type === "application/pdf") return "pdf";
+  if (selectedFile.type.startsWith("image/")) return "image";
+  return "unknown";
+};
+
 export function ExtractorUploadPanel() {
   const qc = useQueryClient();
+  const [draftFile, setDraftFile] = useState<SelectedFile | null>(null);
   const [file, setFile] = useState<SelectedFile | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const fileKind = useMemo(() => {
-    if (!file) return null;
-    if (file.type === "application/pdf") return "pdf";
-    if (file.type.startsWith("image/")) return "image";
-    return "unknown";
-  }, [file]);
+  const draftFileKind = useMemo(() => getFileKind(draftFile), [draftFile]);
+  const fileKind = useMemo(() => getFileKind(file), [file]);
+  const isDraftSelected = draftFile != null && file?.name === draftFile.name && file?.size === draftFile.size;
 
   useEffect(() => {
     return () => {
       if (file?.previewUrl) URL.revokeObjectURL(file.previewUrl);
     };
   }, [file?.previewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (draftFile?.previewUrl) URL.revokeObjectURL(draftFile.previewUrl);
+    };
+  }, [draftFile?.previewUrl]);
 
   const { data: sheets = [] } = useQuery({
     queryKey: ["extracted-sheets"],
@@ -72,15 +83,24 @@ export function ExtractorUploadPanel() {
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0] ?? null;
     if (!nextFile) {
-      setFile(null);
+      setDraftFile(null);
       return;
     }
-    setFile({
+    setDraftFile({
       file: nextFile,
       name: nextFile.name,
       size: nextFile.size,
       type: nextFile.type || "unknown",
       previewUrl: nextFile.type.startsWith("image/") ? URL.createObjectURL(nextFile) : null,
+    });
+    event.target.value = "";
+  };
+
+  const selectDraftFile = () => {
+    if (!draftFile) return;
+    setFile({
+      ...draftFile,
+      previewUrl: draftFile.file.type.startsWith("image/") ? URL.createObjectURL(draftFile.file) : null,
     });
   };
 
@@ -107,28 +127,28 @@ export function ExtractorUploadPanel() {
           </label>
         </div>
 
-        {file && (
+        {draftFile && (
           <div className="mt-4 rounded-md border border-primary/30 bg-primary/5 p-3">
             <div className="flex items-start gap-2">
               <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground">
-                {fileKind === "image" ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                {draftFileKind === "image" ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
               </span>
               <div className="min-w-0">
-                <div className="truncate text-xs font-bold" title={file.name}>{file.name}</div>
-                <div className="mt-1 text-[11px] text-muted-foreground">{formatBytes(file.size)}</div>
+                <div className="truncate text-xs font-bold" title={draftFile.name}>{draftFile.name}</div>
+                <div className="mt-1 text-[11px] text-muted-foreground">{formatBytes(draftFile.size)}</div>
               </div>
             </div>
             <button
               type="button"
-              disabled={fileKind !== "pdf" || createMutation.isPending}
-              onClick={() => createMutation.mutate(file.file)}
+              disabled={isDraftSelected}
+              onClick={selectDraftFile}
               className="mt-3 inline-flex h-8 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
-              {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-              독해 문항 추출
+              <FileText className="h-3.5 w-3.5" />
+              {isDraftSelected ? "선택됨" : "선택"}
             </button>
-            {fileKind !== "pdf" && (
-              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">현재는 PDF 추출만 지원합니다.</p>
+            {draftFileKind !== "pdf" && (
+              <p className="mt-2 text-[11px] leading-4 text-muted-foreground">선택은 가능하지만 추출은 PDF만 지원합니다.</p>
             )}
           </div>
         )}

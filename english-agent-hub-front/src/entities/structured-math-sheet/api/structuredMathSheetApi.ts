@@ -25,23 +25,33 @@ export type StructuredMathSheet = {
   items: StructuredMathItem[];
 };
 
+export type StructuredMathJob = {
+  status: "PROCESSING" | "DONE" | "FAILED";
+  sheetId: string | null;
+  error: string | null;
+  total: number;
+  done: number;
+};
+
 export const structuredMathSheetApi = {
   list: () =>
     api.get<StructuredMathSheet[]>("/api/structured-math-sheets").then((r) => r.data),
   get: (id: string) =>
     api.get<StructuredMathSheet>(`/api/structured-math-sheets/${id}`).then((r) => r.data),
-  create: (problem: File, answer?: File | null) => {
+  /** 비동기 추출 잡 시작 → jobId 즉시 반환 (202). */
+  startJob: (problem: File, answer?: File | null) => {
     const form = new FormData();
     form.append("file", problem);
     if (answer) form.append("answerFile", answer);
-    // 문항별 Vision 전사(LaTeX)라 오래 걸린다.
     return api
-      .post<StructuredMathSheet>("/api/structured-math-sheets", form, {
+      .post<{ jobId: string }>("/api/structured-math-sheets", form, {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 600_000,
       })
-      .then((r) => r.data);
+      .then((r) => r.data.jobId);
   },
+  /** 잡 상태 폴링. */
+  getJob: (jobId: string) =>
+    api.get<StructuredMathJob>(`/api/structured-math-sheets/jobs/${jobId}`).then((r) => r.data),
   delete: (id: string) =>
     api.delete<void>(`/api/structured-math-sheets/${id}`).then(() => undefined),
 };
