@@ -1,8 +1,8 @@
 "use client";
 
-import { ChangeEvent, useEffect, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, FunctionSquare, Loader2, Trash2, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, FunctionSquare, Loader2, ScrollText, Trash2, Upload, X } from "lucide-react";
 import {
   structuredMathSheetApi,
   type StructuredMathSheet,
@@ -11,6 +11,8 @@ import { MathText } from "@/shared/ui/MathText";
 import { toast, toastError } from "@/shared/lib/toast";
 
 const CHOICE_MARKS = ["①", "②", "③", "④", "⑤"];
+type PreviewMode = "exam" | "quiz";
+type StructuredMathHash = { sheetId: string; mode: PreviewMode; questionIndex: number };
 
 const formatBytes = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -24,6 +26,8 @@ export function StructuredMathExtractorPanel() {
   const [problem, setProblem] = useState<File | null>(null);
   const [answer, setAnswer] = useState<File | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [initialPreviewMode, setInitialPreviewMode] = useState<PreviewMode>("exam");
+  const [initialQuestionIndex, setInitialQuestionIndex] = useState(0);
 
   const { data: sheets = [] } = useQuery({
     queryKey: ["structured-math-sheets"],
@@ -35,6 +39,17 @@ export function StructuredMathExtractorPanel() {
     queryFn: () => structuredMathSheetApi.get(openId as string),
     enabled: openId != null,
   });
+
+  const openSheetDetail = (sheetId: string, mode: PreviewMode = "exam", questionIndex = 0) => {
+    setOpenId(sheetId);
+    setInitialPreviewMode(mode);
+    setInitialQuestionIndex(questionIndex);
+    replaceStructuredMathHash(sheetId, mode, questionIndex);
+  };
+  const closeSheetDetail = () => {
+    setOpenId(null);
+    clearStructuredMathHash();
+  };
 
   // 비동기 잡(Async Request-Reply): POST는 즉시 jobId를 받고, 상태를 폴링한다.
   const [jobId, setJobId] = useState<string | null>(null);
@@ -60,7 +75,7 @@ export function StructuredMathExtractorPanel() {
     if (job.status === "DONE" && job.sheetId) {
       toast.success("정형 추출 완료");
       qc.invalidateQueries({ queryKey: ["structured-math-sheets"] });
-      setOpenId(job.sheetId);
+      openSheetDetail(job.sheetId, "exam", 0);
       setJobId(null);
     } else if (job.status === "FAILED") {
       toast.error(job.error || "정형 추출에 실패했습니다.");
@@ -68,13 +83,29 @@ export function StructuredMathExtractorPanel() {
     }
   }, [job, qc]);
 
+  useEffect(() => {
+    const applyHash = () => {
+      const parsed = parseStructuredMathHash();
+      if (!parsed) return;
+      setOpenId(parsed.sheetId);
+      setInitialPreviewMode(parsed.mode);
+      setInitialQuestionIndex(parsed.questionIndex);
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
+  }, []);
+
   const running = startMutation.isPending || (jobId != null && job?.status !== "DONE" && job?.status !== "FAILED");
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => structuredMathSheetApi.delete(id),
     onSuccess: (_d, id) => {
       qc.invalidateQueries({ queryKey: ["structured-math-sheets"] });
-      if (openId === id) setOpenId(null);
+      if (openId === id) {
+        setOpenId(null);
+        clearStructuredMathHash();
+      }
     },
     onError: (e) => toastError(e, "삭제에 실패했습니다."),
   });
@@ -158,7 +189,7 @@ export function StructuredMathExtractorPanel() {
               <SheetCard
                 key={sheet.id}
                 sheet={sheet}
-                onOpen={() => setOpenId(sheet.id)}
+                onOpen={() => openSheetDetail(sheet.id)}
                 onDelete={() => deleteMutation.mutate(sheet.id)}
                 deleting={deleteMutation.isPending && deleteMutation.variables === sheet.id}
               />
@@ -167,7 +198,15 @@ export function StructuredMathExtractorPanel() {
         </div>
       )}
 
-      {openId && <DetailModal sheet={openSheet ?? null} loading={openLoading} onClose={() => setOpenId(null)} />}
+      {openId && (
+        <DetailModal
+          sheet={openSheet ?? null}
+          loading={openLoading}
+          initialMode={initialPreviewMode}
+          initialQuestionIndex={initialQuestionIndex}
+          onClose={closeSheetDetail}
+        />
+      )}
     </section>
   );
 }
@@ -268,20 +307,42 @@ function SheetCard({
 function DetailModal({
   sheet,
   loading,
+  initialMode,
+  initialQuestionIndex,
   onClose,
 }: {
   sheet: StructuredMathSheet | null;
   loading: boolean;
+  initialMode: PreviewMode;
+  initialQuestionIndex: number;
   onClose: () => void;
 }) {
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(initialMode);
+  const [quizIndex, setQuizIndex] = useState(initialQuestionIndex);
+
+  useEffect(() => {
+    setPreviewMode(initialMode);
+    setQuizIndex(clampQuestionIndex(initialQuestionIndex, sheet?.items.length ?? 1));
+  }, [initialMode, initialQuestionIndex, sheet?.id, sheet?.items.length]);
+
+  const changePreviewMode = (mode: PreviewMode) => {
+    setPreviewMode(mode);
+    if (sheet) replaceStructuredMathHash(sheet.id, mode, quizIndex);
+  };
+  const changeQuizIndex = (nextIndex: number) => {
+    const clamped = clampQuestionIndex(nextIndex, sheet?.items.length ?? 1);
+    setQuizIndex(clamped);
+    if (sheet) replaceStructuredMathHash(sheet.id, "quiz", clamped);
+  };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/35 px-4 py-12"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-foreground/35 px-3 py-6 xl:px-5"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-3xl overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div className="w-full max-w-[1440px] overflow-hidden rounded-lg border border-border bg-background shadow-xl">
         <div className="flex items-center justify-between border-b border-border bg-muted/35 px-5 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-base font-bold">{sheet?.title ?? "불러오는 중"}</h2>
@@ -289,84 +350,302 @@ function DetailModal({
               <p className="mt-0.5 text-xs text-muted-foreground">{sheet.itemCount}문항 · 발문·보기=LaTeX, 도형=이미지</p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent"
-            aria-label="닫기"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-border bg-background">
+              <button
+                type="button"
+                onClick={() => changePreviewMode("exam")}
+                title="시험지형"
+                aria-pressed={previewMode === "exam"}
+                className={`inline-flex items-center gap-1.5 px-3 text-xs font-semibold ${
+                  previewMode === "exam" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                <ScrollText className="h-3.5 w-3.5" />
+                시험지형
+              </button>
+              <button
+                type="button"
+                onClick={() => changePreviewMode("quiz")}
+                title="퀴즈형"
+                aria-pressed={previewMode === "quiz"}
+                className={`inline-flex items-center gap-1.5 border-l border-border px-3 text-xs font-semibold ${
+                  previewMode === "quiz" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+                }`}
+              >
+                <FunctionSquare className="h-3.5 w-3.5" />
+                퀴즈형
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent"
+              aria-label="닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="max-h-[72vh] overflow-y-auto p-5">
+        <div className="max-h-[84vh] overflow-y-auto p-5 xl:p-6">
           {loading || !sheet ? (
             <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               불러오는 중
             </div>
           ) : (
-            <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {sheet.items.map((item, i) => (
-                <li key={i} className="rounded-md border border-border bg-muted/20 p-4">
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    {item.questionNumber != null && (
-                      <span className="rounded bg-foreground px-2 py-0.5 font-bold text-background">{item.questionNumber}번</span>
-                    )}
-                    {item.subject && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.subject}</span>}
-                    {item.type && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.type}</span>}
-                    {item.points != null && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.points}점</span>}
-                    {item.answer && (
-                      <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800">정답 {item.answer}</span>
-                    )}
-                    {item.needsReview && (
-                      <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-medium text-amber-800">검수 필요</span>
-                    )}
-                  </div>
-
-                  {/* 발문 (LaTeX) */}
-                  <div className="mt-3 text-sm leading-7">
-                    <MathText text={item.prompt} />
-                  </div>
-
-                  {/* 도형 이미지 (있으면) */}
-                  {item.figureImageUrl && (
-                    <img
-                      src={item.figureImageUrl}
-                      alt={`${item.questionNumber ?? i + 1}번 도형`}
-                      className="mt-3 max-h-72 rounded border border-border bg-white"
-                      loading="lazy"
-                    />
-                  )}
-
-                  {/* 보기 (LaTeX) */}
-                  {item.choices.length > 0 && (
-                    <ul className="mt-3 space-y-1.5 text-sm">
-                      {item.choices.map((c, ci) => {
-                        const mark = CHOICE_MARKS[ci] ?? `${ci + 1}.`;
-                        const isAnswer = item.answer != null && item.answer.trim() === mark;
-                        return (
-                          <li
-                            key={ci}
-                            className={
-                              isAnswer
-                                ? "flex gap-2 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-800"
-                                : "flex gap-2 px-2 py-1"
-                            }
-                          >
-                            <span className="shrink-0">{mark}</span>
-                            <MathText text={c} />
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </li>
-              ))}
-            </ol>
+            previewMode === "exam" ? (
+              <StructuredMathExamPreview sheet={sheet} />
+            ) : (
+              <StructuredMathQuizPreview sheet={sheet} quizIndex={quizIndex} onChangeQuizIndex={changeQuizIndex} />
+            )
           )}
         </div>
       </div>
     </div>
   );
+}
+
+function StructuredMathExamPreview({ sheet }: { sheet: StructuredMathSheet }) {
+  return (
+    <ol className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {sheet.items.map((item, i) => (
+        <li key={i} className="rounded-md border border-border bg-muted/20 p-4">
+          <StructuredMathMeta item={item} index={i} />
+          <div className="mt-3 text-sm leading-7">
+            <MathText text={item.prompt} />
+          </div>
+          <StructuredMathFigure item={item} index={i} />
+          <StructuredMathChoices item={item} variant="exam" />
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function StructuredMathQuizPreview({
+  sheet,
+  quizIndex,
+  onChangeQuizIndex,
+}: {
+  sheet: StructuredMathSheet;
+  quizIndex: number;
+  onChangeQuizIndex: (index: number) => void;
+}) {
+  const currentIndex = clampQuestionIndex(quizIndex, sheet.items.length);
+  const item = sheet.items[currentIndex];
+  const solvedCount = currentIndex + 1;
+  const pendingCount = Math.max(sheet.items.length - solvedCount, 0);
+  const activeNumberRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeNumberRef.current?.scrollIntoView({ block: "nearest" });
+  }, [currentIndex]);
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="min-h-[700px] rounded-md border border-border bg-white p-6 text-foreground">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-muted-foreground">{sheet.title}</p>
+            <h3 className="mt-1 text-base font-bold">
+              {item.questionNumber ?? currentIndex + 1}. {item.points != null && `[${item.points}점] `}
+              <span className="text-muted-foreground">문항</span>
+            </h3>
+          </div>
+          <div className="rounded-md bg-foreground px-4 py-2 text-sm font-bold text-background">
+            {solvedCount} / {sheet.items.length}
+          </div>
+        </div>
+
+        <div className="grid min-h-[540px] gap-6 lg:grid-cols-[minmax(320px,0.95fr)_minmax(420px,1fr)]">
+          <div className="flex min-h-[260px] items-center justify-center rounded-md border border-border bg-muted/15 p-4">
+            {item.figureImageUrl ? (
+              <StructuredMathFigure item={item} index={currentIndex} quiz />
+            ) : (
+              <div className="text-center text-sm text-muted-foreground">
+                <FunctionSquare className="mx-auto mb-2 h-8 w-8" />
+                도형 이미지 없음
+              </div>
+            )}
+          </div>
+
+          <div className="flex min-h-0 flex-col">
+            <div className="rounded-md border border-border bg-muted/25 p-4 text-[15px] font-semibold leading-7">
+              <MathText text={item.prompt} />
+            </div>
+            <StructuredMathChoices item={item} variant="quiz" />
+            <div className="mt-auto flex items-center justify-between gap-3 pt-5">
+              <button
+                type="button"
+                disabled={currentIndex === 0}
+                onClick={() => onChangeQuizIndex(currentIndex - 1)}
+                className="inline-flex h-10 items-center gap-2 rounded-md border border-border px-4 text-sm font-semibold hover:bg-accent disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                이전 문제
+              </button>
+              <button
+                type="button"
+                disabled={currentIndex === sheet.items.length - 1}
+                onClick={() => onChangeQuizIndex(currentIndex + 1)}
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-40"
+              >
+                다음 문제
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside className="flex h-[700px] min-h-0 flex-col rounded-md border border-border bg-white p-4">
+        <h3 className="shrink-0 text-sm font-bold">문항 네비게이터</h3>
+        <div className="mt-3 shrink-0 border-t border-border pt-3 text-xs text-muted-foreground">
+          <p>진행: {solvedCount} / {sheet.items.length} 문항</p>
+          <p className="mt-1">남은 문항: {pendingCount}개</p>
+        </div>
+        <div className="mt-4 grid min-h-0 flex-1 grid-cols-5 content-start gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
+          {sheet.items.map((navItem, i) => {
+            const active = i === currentIndex;
+            return (
+              <button
+                key={i}
+                ref={active ? activeNumberRef : null}
+                type="button"
+                onClick={() => onChangeQuizIndex(i)}
+                className={`h-10 rounded-md border text-sm font-bold ${
+                  active ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                }`}
+                aria-label={`${navItem.questionNumber ?? i + 1}번 문항으로 이동`}
+              >
+                {navItem.questionNumber ?? i + 1}
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function StructuredMathMeta({ item, index }: { item: StructuredMathSheet["items"][number]; index: number }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="rounded bg-foreground px-2 py-0.5 font-bold text-background">{item.questionNumber ?? index + 1}번</span>
+      {item.subject && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.subject}</span>}
+      {item.type && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.type}</span>}
+      {item.points != null && <span className="rounded border border-border bg-background px-2 py-0.5 text-muted-foreground">{item.points}점</span>}
+      {item.answer && (
+        <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800">정답 {item.answer}</span>
+      )}
+      {item.needsReview && (
+        <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 font-medium text-amber-800">검수 필요</span>
+      )}
+    </div>
+  );
+}
+
+function StructuredMathFigure({
+  item,
+  index,
+  exam,
+  quiz,
+}: {
+  item: StructuredMathSheet["items"][number];
+  index: number;
+  exam?: boolean;
+  quiz?: boolean;
+}) {
+  if (!item.figureImageUrl) return null;
+  return (
+    <img
+      src={item.figureImageUrl}
+      alt={`${item.questionNumber ?? index + 1}번 도형`}
+      className={
+        quiz
+          ? "max-h-[360px] max-w-full object-contain"
+          : exam
+            ? "mt-4 max-h-80 max-w-full border border-border bg-white"
+            : "mt-3 max-h-72 rounded border border-border bg-white"
+      }
+      loading="lazy"
+    />
+  );
+}
+
+function StructuredMathChoices({
+  item,
+  variant,
+}: {
+  item: StructuredMathSheet["items"][number];
+  variant: PreviewMode;
+}) {
+  if (item.choices.length === 0) return null;
+
+  return (
+    <ul className={variant === "exam" ? "mt-4 grid gap-x-5 gap-y-2 text-[15px] sm:grid-cols-2" : "mt-3 space-y-1.5 text-sm"}>
+      {item.choices.map((choice, choiceIndex) => {
+        const mark = CHOICE_MARKS[choiceIndex] ?? `${choiceIndex + 1}.`;
+        const isAnswer = isStructuredMathAnswer(item.answer, mark, choiceIndex);
+        return (
+          <li
+            key={choiceIndex}
+            className={
+              isAnswer
+                ? "flex gap-2 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-800"
+                : "flex gap-2 px-2 py-1"
+            }
+          >
+            <span className="shrink-0">{mark}</span>
+            <MathText text={choice} />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function isStructuredMathAnswer(answer: string | null, mark: string, choiceIndex: number) {
+  if (!answer) return false;
+  const normalized = answer.trim();
+  return normalized === mark || normalized === String(choiceIndex + 1);
+}
+
+function clampQuestionIndex(index: number, itemCount: number) {
+  if (itemCount <= 0) return 0;
+  if (Number.isNaN(index)) return 0;
+  return Math.min(Math.max(index, 0), itemCount - 1);
+}
+
+function parseStructuredMathHash(): StructuredMathHash | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const sheetId = params.get("sheet");
+  if (!sheetId) return null;
+  const rawMode = params.get("mode");
+  const mode: PreviewMode = rawMode === "quiz" ? "quiz" : "exam";
+  const questionNumber = Number(params.get("q") ?? "1");
+  return {
+    sheetId,
+    mode,
+    questionIndex: Number.isFinite(questionNumber) ? Math.max(questionNumber - 1, 0) : 0,
+  };
+}
+
+function replaceStructuredMathHash(sheetId: string, mode: PreviewMode, questionIndex: number) {
+  if (typeof window === "undefined") return;
+  const params = new URLSearchParams();
+  params.set("sheet", sheetId);
+  params.set("mode", mode);
+  if (mode === "quiz") params.set("q", String(questionIndex + 1));
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${params.toString()}`);
+}
+
+function clearStructuredMathHash() {
+  if (typeof window === "undefined") return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
 }
