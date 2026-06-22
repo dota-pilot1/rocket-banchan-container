@@ -15,6 +15,7 @@ export const nav = {
   questionGenMath: "数学問題ジェネレーター",
   questionExtractor: "英語問題抽出",
   questionExtractorMath: "数学問題抽出",
+  questionExtractorMath2: "数学問題抽出ツール2",
   referenceData: "基準情報",
   vocabularyDictionary: "語彙辞典",
   idiomDictionary: "熟語辞典",

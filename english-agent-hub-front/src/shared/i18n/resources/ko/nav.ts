@@ -15,6 +15,7 @@ export const nav = {
   questionGenMath: "수학 문제 생성기",
   questionExtractor: "영어 문제 추출",
   questionExtractorMath: "수학 문제 추출",
+  questionExtractorMath2: "수학 문제 추출기 2",
   referenceData: "기준정보",
   vocabularyDictionary: "어휘 사전",
   idiomDictionary: "숙어 사전",

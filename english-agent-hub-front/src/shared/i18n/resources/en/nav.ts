@@ -15,6 +15,7 @@ export const nav = {
   questionGenMath: "Math Generator",
   questionExtractor: "English Extractor",
   questionExtractorMath: "Math Extractor",
+  questionExtractorMath2: "Math Extractor 2",
   referenceData: "Reference Data",
   vocabularyDictionary: "Vocabulary Dictionary",
   idiomDictionary: "Idiom Dictionary",

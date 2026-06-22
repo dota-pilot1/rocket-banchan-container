@@ -51,6 +51,7 @@ public class MenuSeeder implements ApplicationRunner {
                 new MenuDef("QUESTION_GEN_MATH",     "QUESTION_GEN", "수학 문제 생성기", "nav.questionGenMath",    "/question-generator/math",    "Calculator",  RoleSeeder.ROLE_ADMIN,   1),
                 new MenuDef("QUESTION_EXTRACTOR",    "QUESTION_GEN", "영어 문제 추출", "nav.questionExtractor", "/question-generator/extractor", "FileSearch", RoleSeeder.ROLE_ADMIN,   2),
                 new MenuDef("QUESTION_EXTRACTOR_MATH","QUESTION_GEN", "수학 문제 추출", "nav.questionExtractorMath", "/question-generator/math-extractor", "Calculator", RoleSeeder.ROLE_ADMIN, 3),
+                new MenuDef("QUESTION_EXTRACTOR_MATH2","QUESTION_GEN", "수학 문제 추출기 2", "nav.questionExtractorMath2", "/question-generator/math-extractor-2", "FunctionSquare", RoleSeeder.ROLE_ADMIN, 4),
                 new MenuDef("REFERENCE_DATA",         null,       "기준정보",      "nav.referenceData",     null,                "Database",        RoleSeeder.ROLE_ADMIN,   5),
                 new MenuDef("REFERENCE_VOCABULARY",   "REFERENCE_DATA", "어휘 사전", "nav.vocabularyDictionary", "/reference-data/vocabulary", "BookOpenText", RoleSeeder.ROLE_ADMIN, 0),
                 new MenuDef("REFERENCE_IDIOMS",       "REFERENCE_DATA", "숙어 사전", "nav.idiomDictionary", "/reference-data/idioms", "Languages", RoleSeeder.ROLE_ADMIN, 1),
