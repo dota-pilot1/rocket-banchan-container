@@ -33,6 +33,7 @@ public enum ErrorCode {
     SITE_SETTING_NOT_FOUND(HttpStatus.NOT_FOUND, "SITE_001", "사이트 설정을 찾을 수 없습니다."),
     CHARACTER_NOT_FOUND(HttpStatus.NOT_FOUND, "CHAR_001", "캐릭터를 찾을 수 없습니다."),
     CHARACTER_NOT_OWNER(HttpStatus.FORBIDDEN, "CHAR_002", "본인이 만든 캐릭터만 수정/삭제할 수 있습니다."),
+    CONVERSATION_SAVE_NOT_FOUND(HttpStatus.NOT_FOUND, "CONV_001", "저장된 대화를 찾을 수 없습니다."),
     QUESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "QUES_001", "문제를 찾을 수 없습니다."),
     QUESTION_NOT_EMBEDDED(HttpStatus.BAD_REQUEST, "QUES_002", "임베딩되지 않은 문제는 유사 문제를 조회할 수 없습니다."),
     EXTRACTION_EMPTY_TEXT(HttpStatus.BAD_REQUEST, "QUES_003", "PDF에서 읽을 수 있는 텍스트가 없습니다. 스캔본이면 OCR이 필요합니다."),

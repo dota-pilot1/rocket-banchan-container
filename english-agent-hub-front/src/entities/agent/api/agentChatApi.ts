@@ -64,6 +64,45 @@ export type ChunkAnalysisResponse = {
   tip?: string;
 };
 
+export type ConversationSaveMessageInput = {
+  role: "agent" | "learner";
+  messageOrder: number;
+  text?: string;
+  sourceText?: string;
+  translatedText?: string;
+  sourceLabel?: string;
+  translatedLabel?: string;
+};
+
+export type CreateConversationSaveRequest = {
+  agentId: string;
+  agentTitle?: string;
+  title: string;
+  summary?: string;
+  note?: string;
+  messages: ConversationSaveMessageInput[];
+};
+
+export type ConversationSaveMessageResponse = ConversationSaveMessageInput & {
+  id: number;
+};
+
+export type ConversationSaveSummary = {
+  id: number;
+  agentId: string;
+  agentTitle?: string | null;
+  title: string;
+  summary?: string | null;
+  note?: string | null;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationSaveDetail = ConversationSaveSummary & {
+  messages: ConversationSaveMessageResponse[];
+};
+
 async function refreshTokens(): Promise<string> {
   const refreshToken = tokenStorage.getRefresh();
   if (!refreshToken) throw new Error("no refresh token");
@@ -231,4 +270,21 @@ export const agentChatApi = {
     if (!response.ok) throw new Error(`transcribe failed: ${response.status}`);
     return (await response.json()) as { text: string };
   },
+
+  listConversationSaves: (agentId: string) =>
+    api
+      .get<ConversationSaveSummary[]>("/api/conversation-saves", { params: { agentId } })
+      .then((r) => r.data),
+
+  getConversationSave: (id: number) =>
+    api.get<ConversationSaveDetail>(`/api/conversation-saves/${id}`).then((r) => r.data),
+
+  createConversationSave: (body: CreateConversationSaveRequest) =>
+    api.post<ConversationSaveDetail>("/api/conversation-saves", body).then((r) => r.data),
+
+  updateConversationSaveNote: (id: number, note: string) =>
+    api.patch<ConversationSaveDetail>(`/api/conversation-saves/${id}/note`, { note }).then((r) => r.data),
+
+  deleteConversationSave: (id: number) =>
+    api.delete<void>(`/api/conversation-saves/${id}`).then(() => undefined),
 };

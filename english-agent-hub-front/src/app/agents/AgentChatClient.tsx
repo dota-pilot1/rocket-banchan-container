@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bot, Download, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, SlidersHorizontal, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Download, History, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Save, Send, Settings2, SlidersHorizontal, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { agentChatApi } from "@/entities/agent/api/agentChatApi";
-import type { ChatTurn, ChunkAnalysisResponse } from "@/entities/agent/api/agentChatApi";
+import type { ChatTurn, ChunkAnalysisResponse, ConversationSaveDetail, ConversationSaveSummary } from "@/entities/agent/api/agentChatApi";
 import type { LearningAgent } from "@/entities/agent/model/learningAgents";
 import { toast, toastError } from "@/shared/lib/toast";
 import { Switch } from "@/shared/ui/Switch";
@@ -91,6 +91,9 @@ const RESPONSE_LENGTH_PRESETS: {
 
 const CONVERSATION_QUALITY_INSTRUCTION =
   "Highest priority conversation rule: answer the learner's latest message directly and specifically before doing anything else. If the learner asks your name, say your name. If they ask a direct question, answer that question. Only use a generic greeting on the first turn when the learner has not asked a specific question. Do not suggest what the learner can say unless they ask for help, seem stuck, or click a suggestion/help feature. Stay in character as the friend, not as a teacher.";
+
+const KOREAN_INPUT_INSTRUCTION =
+  "If the learner writes in Korean, understand the Korean text directly. Do not treat any English translation as authoritative. Preserve named entities, slang, memes, product names, and newly coined terms exactly when relevant. Reply in natural English by default unless the learner explicitly asks for Korean.";
 
 function isResponseLengthPreset(value: string | null): value is ResponseLengthPreset {
   return RESPONSE_LENGTH_PRESETS.some((preset) => preset.value === value);
@@ -233,6 +236,19 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function formatConversationSavedAt(value: string) {
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function getConversationPreview(message: ChatMessage) {
+  return (message.sourceText ?? message.text ?? message.translatedText ?? "").trim();
+}
+
 function TypingDots() {
   return (
     <span className="flex items-center gap-1 py-1" aria-label="응답 작성 중">
@@ -247,10 +263,14 @@ function ChunkAnalysisDialog({
   open,
   state,
   onClose,
+  onSpeak,
+  speakingMessageId,
 }: {
   open: boolean;
   state?: ChunkAnalysisState;
   onClose: () => void;
+  onSpeak: (messageId: string, text: string) => void;
+  speakingMessageId: string | null;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -264,6 +284,8 @@ function ChunkAnalysisDialog({
   if (!open || !state) return null;
 
   const data = state.data;
+  const fullAudioId = `chunk-analysis:${state.source}:all`;
+  const isSpeakingFull = speakingMessageId === fullAudioId;
 
   return (
     <div
@@ -283,7 +305,18 @@ function ChunkAnalysisDialog({
               <ListTree className="h-4 w-4 text-primary" />
               청크 분석
             </h2>
-            <p className="mt-1 break-words text-xs text-muted-foreground">{state.source}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <p className="min-w-0 break-words text-xs text-muted-foreground">{state.source}</p>
+              <button
+                type="button"
+                onClick={() => onSpeak(fullAudioId, state.source)}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title={isSpeakingFull ? "전체 듣기 중지" : "전체 문장 듣기"}
+              >
+                {isSpeakingFull ? <Square className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                {isSpeakingFull ? "중지" : "전체 듣기"}
+              </button>
+            </div>
           </div>
           <button
             type="button"
@@ -313,7 +346,22 @@ function ChunkAnalysisDialog({
                     key={`${index}-${chunk.en}`}
                     className="flex flex-col gap-1 border-l-2 border-primary/40 pl-3"
                   >
-                    <span className="font-semibold text-foreground">{chunk.en}</span>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-semibold text-foreground">{chunk.en}</span>
+                      <button
+                        type="button"
+                        onClick={() => onSpeak(`chunk-analysis:${state.source}:${index}`, chunk.en)}
+                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        title="이 청크 듣기"
+                        aria-label="이 청크 듣기"
+                      >
+                        {speakingMessageId === `chunk-analysis:${state.source}:${index}` ? (
+                          <Square className="h-3.5 w-3.5" />
+                        ) : (
+                          <Volume2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
                     <span className="text-muted-foreground">
                       → {chunk.ko}
                       {chunk.note?.trim() ? (
@@ -467,6 +515,14 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
   const [newsQuery, setNewsQuery] = useState("");
   const [chunkAnalysis, setChunkAnalysis] = useState<Record<string, ChunkAnalysisState>>({});
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
+  const [savingConversation, setSavingConversation] = useState(false);
+  const [savedListOpen, setSavedListOpen] = useState(false);
+  const [savedConversations, setSavedConversations] = useState<ConversationSaveSummary[]>([]);
+  const [savedConversationsLoading, setSavedConversationsLoading] = useState(false);
+  const [selectedSavedConversation, setSelectedSavedConversation] = useState<ConversationSaveDetail | null>(null);
+  const [selectedSavedConversationLoading, setSelectedSavedConversationLoading] = useState(false);
+  const [savedConversationNoteDraft, setSavedConversationNoteDraft] = useState("");
+  const [savingConversationNote, setSavingConversationNote] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
@@ -682,6 +738,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
       agent?.systemPrompt?.trim(),
       composeInstructions(instructionsValue),
       CONVERSATION_QUALITY_INSTRUCTION,
+      autoKoEn ? KOREAN_INPUT_INSTRUCTION : undefined,
       getResponseLengthInstruction(lengthValue),
     ]
       .filter((part): part is string => Boolean(part?.trim()));
@@ -1028,7 +1085,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     const english = (await withTranslationRetry(() => agentChatApi.translateToEnglish(original))).text.trim();
     return {
       displayText: english,
-      modelText: english,
+      modelText: original,
       sourceText: original,
       translatedText: english,
       sourceLabel: "한국어",
@@ -1401,6 +1458,139 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     void startRealtimeSession();
   };
 
+  const buildConversationSaveMessages = () =>
+    messages
+      .filter((message) => !message.streaming)
+      .map((message, index) => ({
+        role: message.role,
+        messageOrder: index,
+        text: message.text || undefined,
+        sourceText: message.sourceText || undefined,
+        translatedText: message.translatedText || undefined,
+        sourceLabel: message.sourceLabel || undefined,
+        translatedLabel: message.translatedLabel || undefined,
+      }))
+      .filter((message) =>
+        [message.text, message.sourceText, message.translatedText].some((value) => value?.trim())
+      );
+
+  const saveCurrentConversation = async () => {
+    if (!agent || savingConversation) return;
+    const saveMessages = buildConversationSaveMessages();
+    if (saveMessages.length === 0) {
+      toast.info("저장할 대화가 없습니다.");
+      return;
+    }
+
+    const firstLearner = messages.find((message) => message.role === "learner");
+    const preview = firstLearner ? getConversationPreview(firstLearner) : getConversationPreview(messages[0]);
+    const nowTitle = `${agent.title} 대화 ${new Intl.DateTimeFormat("ko-KR", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date())}`;
+
+    setSavingConversation(true);
+    try {
+      const saved = await agentChatApi.createConversationSave({
+        agentId: agent.id,
+        agentTitle: agent.title,
+        title: preview ? preview.slice(0, 80) : nowTitle,
+        summary: preview ? `${agent.title} - ${preview.slice(0, 120)}` : undefined,
+        messages: saveMessages,
+      });
+      setSavedConversations((current) => [
+        {
+          id: saved.id,
+          agentId: saved.agentId,
+          agentTitle: saved.agentTitle,
+          title: saved.title,
+          summary: saved.summary,
+          messageCount: saved.messages.length,
+          createdAt: saved.createdAt,
+          updatedAt: saved.updatedAt,
+        },
+        ...current.filter((item) => item.id !== saved.id),
+      ]);
+      toast.success("대화 전체를 저장했습니다.");
+    } catch (error) {
+      toastError(error, "대화를 저장하지 못했습니다.");
+    } finally {
+      setSavingConversation(false);
+    }
+  };
+
+  const openConversationSaves = async () => {
+    if (!agent) return;
+    setSavedListOpen(true);
+    setSavedConversationsLoading(true);
+    try {
+      setSavedConversations(await agentChatApi.listConversationSaves(agent.id));
+    } catch (error) {
+      toastError(error, "저장된 대화 목록을 가져오지 못했습니다.");
+    } finally {
+      setSavedConversationsLoading(false);
+    }
+  };
+
+  const selectSavedConversation = async (saveId: number) => {
+    setSelectedSavedConversationLoading(true);
+    try {
+      const detail = await agentChatApi.getConversationSave(saveId);
+      setSelectedSavedConversation(detail);
+      setSavedConversationNoteDraft(detail.note ?? "");
+    } catch (error) {
+      toastError(error, "저장된 대화를 가져오지 못했습니다.");
+    } finally {
+      setSelectedSavedConversationLoading(false);
+    }
+  };
+
+  const saveConversationNote = async () => {
+    if (!selectedSavedConversation || savingConversationNote) return;
+
+    setSavingConversationNote(true);
+    try {
+      const saved = await agentChatApi.updateConversationSaveNote(
+        selectedSavedConversation.id,
+        savedConversationNoteDraft
+      );
+      setSelectedSavedConversation(saved);
+      setSavedConversations((current) =>
+        current.map((item) =>
+          item.id === saved.id
+            ? { ...item, note: saved.note, updatedAt: saved.updatedAt }
+            : item
+        )
+      );
+      toast.success("노트를 저장했습니다.");
+    } catch (error) {
+      toastError(error, "노트를 저장하지 못했습니다.");
+    } finally {
+      setSavingConversationNote(false);
+    }
+  };
+
+  const deleteSavedConversation = async (saveId: number) => {
+    if (!(await confirm({
+      title: "저장 대화 삭제",
+      description: "이 저장 대화를 삭제할까요?",
+      confirmText: "삭제",
+      variant: "destructive",
+    }))) return;
+
+    try {
+      await agentChatApi.deleteConversationSave(saveId);
+      setSavedConversations((current) => current.filter((item) => item.id !== saveId));
+      setSelectedSavedConversation((current) => (current?.id === saveId ? null : current));
+      if (selectedSavedConversation?.id === saveId) setSavedConversationNoteDraft("");
+      toast.success("저장 대화를 삭제했습니다.");
+    } catch (error) {
+      toastError(error, "저장 대화를 삭제하지 못했습니다.");
+    }
+  };
+
   const clearChatMessages = () => {
     realtimeTextRef.current.clear();
     completedRealtimeItemsRef.current.clear();
@@ -1608,6 +1798,23 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
             >
               {suggestingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
               추천 답변
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveCurrentConversation()}
+              disabled={messages.length === 0 || sending || savingConversation}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingConversation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={() => void openConversationSaves()}
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <History className="h-3.5 w-3.5" />
+              목록
             </button>
             {responseLengthControl(true)}
             <button
@@ -1983,6 +2190,25 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                 <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                   {agent.level}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => void saveCurrentConversation()}
+                  disabled={messages.length === 0 || sending || savingConversation}
+                  title="현재 대화 전체 저장"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {savingConversation ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  전체 저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openConversationSaves()}
+                  title="저장된 대화 목록"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  저장 목록
+                </button>
                 <button
                   type="button"
                   aria-label="채팅 메시지 지우기"
@@ -2614,10 +2840,204 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
         </div>
       )}
 
+      {savedListOpen && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-3"
+          onClick={() => setSavedListOpen(false)}
+        >
+          <div
+            className="grid h-[calc(100vh-1.5rem)] w-[calc(100vw-1.5rem)] overflow-hidden rounded-xl border border-border bg-background shadow-xl lg:grid-cols-[340px_minmax(0,1fr)_380px]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <section className="flex min-h-0 min-w-0 flex-col border-b border-border lg:border-b-0 lg:border-r">
+              <header className="flex items-center justify-between border-b border-border px-5 py-4">
+                <div>
+                  <h2 className="flex items-center gap-2 text-base font-bold tracking-tight">
+                    <History className="h-4 w-4 text-primary" />
+                    저장된 대화
+                  </h2>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{agent.title}에서 저장한 대화 목록입니다.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="닫기"
+                  onClick={() => setSavedListOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </header>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                {savedConversationsLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    저장 목록을 불러오는 중...
+                  </div>
+                ) : savedConversations.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border bg-background p-5 text-sm text-muted-foreground">
+                    아직 저장된 대화가 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {savedConversations.map((item) => {
+                      const active = selectedSavedConversation?.id === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => void selectSavedConversation(item.id)}
+                          className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                            active
+                              ? "border-primary bg-primary/5"
+                              : "border-border bg-background hover:bg-accent/50"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{item.title}</p>
+                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                                {item.summary || `${item.messageCount}개 메시지`}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-[11px] font-semibold text-muted-foreground">
+                              {formatConversationSavedAt(item.createdAt)}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="flex min-h-0 min-w-0 flex-col border-b border-border lg:border-b-0 lg:border-r">
+              <header className="flex items-center justify-between border-b border-border px-5 py-4">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-bold">
+                    {selectedSavedConversation?.title ?? "대화 상세"}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {selectedSavedConversation
+                      ? `${selectedSavedConversation.messages.length}개 메시지 · ${formatConversationSavedAt(selectedSavedConversation.createdAt)}`
+                      : "목록에서 저장된 대화를 선택하세요."}
+                  </p>
+                </div>
+                {selectedSavedConversation && (
+                  <button
+                    type="button"
+                    onClick={() => void deleteSavedConversation(selectedSavedConversation.id)}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    삭제
+                  </button>
+                )}
+              </header>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                {selectedSavedConversationLoading ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/25 p-4 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    대화를 불러오는 중...
+                  </div>
+                ) : selectedSavedConversation ? (
+                  <div className="space-y-4">
+                    {selectedSavedConversation.messages.map((message) => {
+                      const isLearner = message.role === "learner";
+                      return (
+                        <div key={message.id} className={`flex ${isLearner ? "justify-end" : "justify-start"}`}>
+                          <div
+                            className={`max-w-[82%] rounded-lg px-4 py-3 text-sm leading-6 ${
+                              isLearner
+                                ? "bg-primary text-primary-foreground"
+                                : "border border-border bg-muted/35 text-foreground"
+                            }`}
+                          >
+                            {message.sourceText ? (
+                              <div className="space-y-2">
+                                <div>
+                                  <div className={`mb-1 text-[10px] font-semibold uppercase ${isLearner ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                                    {message.sourceLabel ?? "원문"}
+                                  </div>
+                                  <div className="whitespace-pre-wrap">{message.sourceText}</div>
+                                </div>
+                                <div className={`border-t pt-2 ${isLearner ? "border-primary-foreground/20" : "border-border"}`}>
+                                  <div className={`mb-1 text-[10px] font-semibold uppercase ${isLearner ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+                                    {message.translatedLabel ?? "번역"}
+                                  </div>
+                                  <div className="whitespace-pre-wrap font-medium">{message.translatedText}</div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="whitespace-pre-wrap">{message.text}</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                    저장된 대화를 선택하면 전체 메시지를 볼 수 있습니다.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="flex min-h-0 min-w-0 flex-col">
+              <header className="border-b border-border px-5 py-4">
+                <h3 className="text-sm font-bold">노트 정리</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  대화에서 기억할 표현, 오류, 다음 복습 내용을 정리하세요.
+                </p>
+              </header>
+
+              <div className="flex min-h-0 flex-1 flex-col p-4">
+                {selectedSavedConversation ? (
+                  <>
+                    <textarea
+                      value={savedConversationNoteDraft}
+                      onChange={(event) => setSavedConversationNoteDraft(event.target.value)}
+                      placeholder={`예:
+- Tokenmaxxing은 신조어라 번역하지 말고 그대로 이해
+- "Could you..."로 부드럽게 질문하기
+- 다음에는 Meta 관련 표현 복습`}
+                      className="min-h-0 flex-1 resize-none rounded-md border border-border bg-background px-3 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+                    />
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        {savedConversationNoteDraft.trim().length}자
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void saveConversationNote()}
+                        disabled={savingConversationNote}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingConversationNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        노트 저장
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-40 flex-1 items-center justify-center rounded-lg border border-dashed border-border text-center text-sm leading-6 text-muted-foreground">
+                    저장된 대화를 선택하면<br />오른쪽에 노트를 작성할 수 있습니다.
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+
       <ChunkAnalysisDialog
         open={openChunkId !== null}
         state={openChunkId ? chunkAnalysis[openChunkId] : undefined}
         onClose={() => setOpenChunkId(null)}
+        onSpeak={(messageId, text) => void speakMessage(messageId, text)}
+        speakingMessageId={speakingMessageId}
       />
       {confirmDialog}
     </main>
