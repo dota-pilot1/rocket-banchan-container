@@ -9,7 +9,7 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/dashboard");
+    if (status === "authenticated") router.replace("/question-bank");
     else if (status === "anonymous") router.replace("/login");
   }, [status, router]);
 

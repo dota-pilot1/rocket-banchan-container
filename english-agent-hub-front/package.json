@@ -42,6 +42,7 @@
     "react-i18next": "^17.0.4",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
+    "swagger-ui-react": "^5.32.7",
     "tailwind-merge": "^3.4.0",
     "xlsx-js-style": "^1.2.0",
     "zod": "^4.3.6"
@@ -51,6 +52,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/swagger-ui-react": "^5.18.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",

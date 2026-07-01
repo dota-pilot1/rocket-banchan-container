@@ -11,7 +11,8 @@ import com.cj.englishagenthub.question.presentation.dto.QuestionResponse;
 import com.cj.englishagenthub.question.presentation.dto.QuestionUpsertRequest;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,10 +30,11 @@ public class QuestionService {
     private final CategoryService categoryService;
 
     @Transactional(readOnly = true)
-    public List<QuestionResponse> list(
+    public Page<QuestionResponse> list(
             Long categoryId,
             QuestionDifficulty difficulty,
-            String keyword
+            String keyword,
+            Pageable pageable
     ) {
         Set<Long> categoryIds = categoryId == null ? null : categoryService.subtreeIds(categoryId);
 
@@ -55,9 +57,8 @@ public class QuestionService {
             return cb.and(predicates.toArray(Predicate[]::new));
         };
 
-        return questionRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt")).stream()
-                .map(QuestionResponse::from)
-                .toList();
+        return questionRepository.findAll(spec, pageable)
+                .map(QuestionResponse::from);
     }
 
     @Transactional(readOnly = true)

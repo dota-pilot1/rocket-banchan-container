@@ -48,6 +48,14 @@ export type SimilarQuestion = {
   similarity: number;
 };
 
+export type PageResponse<T> = {
+  content: T[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+};
+
 export type QuestionUpsertRequest = {
   questionType: QuestionType;
   categoryId: number | null;
@@ -65,6 +73,9 @@ export type QuestionListParams = {
   categoryId?: number;
   difficulty?: QuestionDifficulty | "";
   keyword?: string;
+  page?: number;
+  size?: number;
+  sort?: string;
 };
 
 export type GenerateSimilarReadingQuestionRequest = {
@@ -92,12 +103,14 @@ export type GenerateSimilarReadingQuestionRequest = {
 export const questionApi = {
   list: (params: QuestionListParams = {}) =>
     api
-      .get<QuestionResponse[]>("/api/questions", {
+      .get<PageResponse<QuestionResponse> | QuestionResponse[]>("/api/questions", {
         params: Object.fromEntries(
-          Object.entries(params).filter(([, value]) => value !== undefined && value !== "")
+          Object.entries({ size: 1000, sort: "createdAt,desc", ...params }).filter(
+            ([, value]) => value !== undefined && value !== "",
+          )
         ),
       })
-      .then((r) => r.data),
+      .then((r) => (Array.isArray(r.data) ? r.data : r.data.content)),
   create: (body: QuestionUpsertRequest) =>
     api.post<QuestionResponse>("/api/questions", body).then((r) => r.data),
   update: (id: string, body: QuestionUpsertRequest) =>

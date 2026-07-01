@@ -1,7 +1,7 @@
 export const common = {
-  brand: "EnglishAgentHub",
-  tagline: "美发沙龙预约管理平台。",
-  description: "即将添加预约管理、客户管理、员工排班等功能。",
+  brand: "AEGIS",
+  tagline: "用于题目生成与题库运营的管理控制台。",
+  description: "集中管理试卷提取、题目生成、审核与发布流程。",
   loading: "处理中...",
   confirm: "确认",
   cancel: "取消",

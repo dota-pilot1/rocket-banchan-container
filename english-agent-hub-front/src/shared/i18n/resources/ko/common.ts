@@ -1,7 +1,7 @@
 export const common = {
-  brand: "EnglishAgentHub",
-  tagline: "미용실 예약 관리 플랫폼입니다.",
-  description: "예약 관리, 고객 관리, 직원 스케줄 등의 기능이 추가될 예정입니다.",
+  brand: "AEGIS",
+  tagline: "문항 생성과 문제 은행 운영을 위한 관리자 콘솔입니다.",
+  description: "시험지 추출, 문항 생성, 검수, 배포 흐름을 한곳에서 관리합니다.",
   loading: "처리 중...",
   confirm: "확인",
   cancel: "취소",

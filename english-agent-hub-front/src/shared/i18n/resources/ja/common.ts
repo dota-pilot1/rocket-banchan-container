@@ -1,7 +1,7 @@
 export const common = {
-  brand: "EnglishAgentHub",
-  tagline: "ヘアサロン予約管理プラットフォームです。",
-  description: "予約管理、顧客管理、スタッフスケジュールなどの機能が追加予定です。",
+  brand: "AEGIS",
+  tagline: "問題生成と問題バンク運用のための管理コンソールです。",
+  description: "試験抽出、問題生成、レビュー、配信までを一か所で管理します。",
   loading: "読み込み中...",
   confirm: "確認",
   cancel: "キャンセル",

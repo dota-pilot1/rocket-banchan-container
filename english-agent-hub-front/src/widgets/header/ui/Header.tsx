@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Database,
   Eye,
+  FileCode2,
   FileSearch,
   FunctionSquare,
   GraduationCap,
@@ -104,6 +105,8 @@ const adminMenuMeta: Record<string, { description: string; icon: LucideIcon }> =
   ADMIN_SCREEN_SETTINGS: { description: "화면 안내 문구와 표시 설정을 편집합니다.", icon: MonitorCog },
   ADMIN_NAV_MANAGEMENT: { description: "상단 헤더 메뉴와 노출 구성을 조정합니다.", icon: Menu },
   ADMIN_MENU_MANAGEMENT: { description: "상단 헤더 메뉴와 노출 구성을 조정합니다.", icon: Menu },
+  API_DOCS_SWAGGER: { description: "전체 REST API 명세(OpenAPI)를 조회하고 Try it out 으로 테스트합니다.", icon: FileCode2 },
+  API_DOCS_KEY: { description: "외부 협업에 자주 쓰는 핵심 엔드포인트와 인증 흐름을 빠르게 참고합니다.", icon: ListChecks },
 };
 
 function flattenLeaves(item: MenuItem): MenuItem[] {
@@ -419,7 +422,7 @@ export function Header() {
             href="/"
             className="mr-2 text-sm font-semibold tracking-tight hover:opacity-80 transition-opacity"
           >
-            EnglishAgentHub
+            AEGIS
           </Link>
           {status === "authenticated" && (
             <div className="hidden items-center gap-5 md:flex">

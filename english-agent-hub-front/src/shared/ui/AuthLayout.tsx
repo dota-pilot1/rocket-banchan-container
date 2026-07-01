@@ -63,7 +63,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
                 <Sparkles className="h-3.5 w-3.5" />
               </span>
-              EnglishAgentHub
+              AEGIS
             </div>
 
             {/* Hero image (from site-settings) or placeholder */}
@@ -93,7 +93,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
             </div>
 
             <p className="relative text-[10px] text-muted-foreground">
-              © {new Date().getFullYear()} EnglishAgentHub
+              © {new Date().getFullYear()} AEGIS
             </p>
           </section>
 

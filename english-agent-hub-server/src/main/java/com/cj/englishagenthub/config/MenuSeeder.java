@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -21,7 +22,24 @@ public class MenuSeeder implements ApplicationRunner {
     private final MenuRepository menuRepository;
 
     /** 구조 개편으로 코드가 바뀌거나 사라진 메뉴 — 부팅 시 제거 */
-    private static final List<String> LEGACY_CODES = List.of("ADMIN_QUESTION_BANK");
+    private static final List<String> LEGACY_CODES = List.of("ADMIN_QUESTION_BANK", "ADMIN_API_DOCS");
+
+    /** MVP 범위 밖 메뉴는 부팅 시 운영 헤더에서 숨긴다. */
+    private static final Set<String> MVP_HIDDEN_MENU_CODES = Set.of(
+            "DASHBOARD",
+            "LEARNING",
+            "PRACTICE",
+            "LEARNING_RESULTS",
+            "REFERENCE_DATA",
+            "REFERENCE_VOCABULARY",
+            "REFERENCE_IDIOMS",
+            "REFERENCE_GRAMMAR",
+            "REFERENCE_QUESTION_TYPES",
+            "REFERENCE_CURRICULUM",
+            "RESULTS",
+            "EXAM_RESULTS",
+            "WRONG_ANSWER_NOTE"
+    );
 
     private record MenuDef(
             String code, String parentCode, String label, String labelKey,
@@ -65,7 +83,10 @@ public class MenuSeeder implements ApplicationRunner {
                 new MenuDef("ADMIN_USERS",           "ADMIN",    "유저 관리",     "nav.users",            "/users",            "Users",           RoleSeeder.ROLE_ADMIN,   0),
                 new MenuDef("ADMIN_ROLE_PERMISSIONS","ADMIN",    "역할-권한 매핑","nav.rolePermissions",  "/role-permissions", "ShieldCheck",     RoleSeeder.ROLE_ADMIN,   1),
                 new MenuDef("ADMIN_SITE_SETTINGS",   "ADMIN",    "메인 관리",     "nav.siteSettings",     "/site-settings",    "LayoutDashboard", RoleSeeder.ROLE_ADMIN,   2),
-                new MenuDef("ADMIN_MENU_MANAGEMENT", "ADMIN",    "메뉴 관리",     "nav.menuManagement",   "/menu-management",  "Menu",            RoleSeeder.ROLE_ADMIN,   3)
+                new MenuDef("ADMIN_MENU_MANAGEMENT", "ADMIN",    "메뉴 관리",     "nav.menuManagement",   "/menu-management",  "Menu",            RoleSeeder.ROLE_ADMIN,   3),
+                new MenuDef("API_DOCS",              null,       "API 문서",      "nav.apiDocs",          null,                "FileCode2",       RoleSeeder.ROLE_ADMIN,   7),
+                new MenuDef("API_DOCS_SWAGGER",      "API_DOCS", "Swagger",       "nav.swagger",          "/api-docs",         "FileCode2",       RoleSeeder.ROLE_ADMIN,   0),
+                new MenuDef("API_DOCS_KEY",          "API_DOCS", "주요 API",      "nav.keyApi",           "/api-docs/key",     "ListChecks",      RoleSeeder.ROLE_ADMIN,   1)
         );
 
         // upsert: 시더 defs를 소스 오브 트루스로 라벨/계층/순서를 동기화한다.
@@ -75,19 +96,21 @@ public class MenuSeeder implements ApplicationRunner {
                     ? menuRepository.findByCode(def.parentCode()).orElse(null)
                     : null;
             Menu existing = menuRepository.findByCode(def.code()).orElse(null);
+            boolean visible = !MVP_HIDDEN_MENU_CODES.contains(def.code());
             if (existing == null) {
                 menuRepository.save(Menu.create(
                         def.code(), parent, def.label(), def.labelKey(),
                         def.path(), def.icon(), false,
-                        def.requiredRole(), null, true, def.displayOrder()
+                        def.requiredRole(), null, visible, def.displayOrder()
                 ));
                 log.info("Seeded menu: {}", def.code());
             } else {
+                boolean nextVisible = visible && existing.isVisible();
                 existing.update(
                         parent, def.label(), def.labelKey(),
                         def.path(), def.icon(), existing.isExternal(),
                         def.requiredRole(), existing.getRequiredPermission(),
-                        existing.isVisible(), def.displayOrder()
+                        nextVisible, def.displayOrder()
                 );
             }
         }

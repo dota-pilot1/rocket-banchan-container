@@ -87,11 +87,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/agents/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/site-settings").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/menus").permitAll()
-                        .requestMatchers(
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**"
-                        ).permitAll()
+                        // OpenAPI 스펙(/api/docs)은 일부러 permitAll 하지 않는다.
+                        // anyRequest().authenticated() 에 걸려 로그인한 사용자만 조회 가능 →
+                        // 프론트 /api-docs 페이지(RequireRole ADMIN)가 토큰을 붙여 임베드한다.
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )

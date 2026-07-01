@@ -1,7 +1,7 @@
 export const common = {
-  brand: "EnglishAgentHub",
-  tagline: "Hair salon booking management platform.",
-  description: "Appointment, customer, and staff scheduling features are coming soon.",
+  brand: "AEGIS",
+  tagline: "Admin console for question generation and question bank operations.",
+  description: "Manage exam extraction, question generation, review, and publishing in one place.",
   loading: "Loading...",
   confirm: "Confirm",
   cancel: "Cancel",

@@ -21,8 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "EnglishAgentHub",
-  description: "AI 영어 회화 학습 플랫폼",
+  title: "AEGIS",
+  description: "문항 생성과 문제 은행 운영을 위한 관리자 콘솔",
 };
 
 export default function RootLayout({

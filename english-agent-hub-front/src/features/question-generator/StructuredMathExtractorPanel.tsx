@@ -319,6 +319,7 @@ function DetailModal({
 }) {
   const [previewMode, setPreviewMode] = useState<PreviewMode>(initialMode);
   const [quizIndex, setQuizIndex] = useState(initialQuestionIndex);
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
 
   useEffect(() => {
     setPreviewMode(initialMode);
@@ -398,7 +399,15 @@ function DetailModal({
             previewMode === "exam" ? (
               <StructuredMathExamPreview sheet={sheet} />
             ) : (
-              <StructuredMathQuizPreview sheet={sheet} quizIndex={quizIndex} onChangeQuizIndex={changeQuizIndex} />
+              <StructuredMathQuizPreview
+                sheet={sheet}
+                quizIndex={quizIndex}
+                selectedAnswers={selectedAnswers}
+                onSelectAnswer={(questionIndex, answer) =>
+                  setSelectedAnswers((current) => ({ ...current, [questionIndex]: answer }))
+                }
+                onChangeQuizIndex={changeQuizIndex}
+              />
             )
           )}
         </div>
@@ -427,16 +436,21 @@ function StructuredMathExamPreview({ sheet }: { sheet: StructuredMathSheet }) {
 function StructuredMathQuizPreview({
   sheet,
   quizIndex,
+  selectedAnswers,
+  onSelectAnswer,
   onChangeQuizIndex,
 }: {
   sheet: StructuredMathSheet;
   quizIndex: number;
+  selectedAnswers: Record<number, string>;
+  onSelectAnswer: (questionIndex: number, answer: string) => void;
   onChangeQuizIndex: (index: number) => void;
 }) {
   const currentIndex = clampQuestionIndex(quizIndex, sheet.items.length);
   const item = sheet.items[currentIndex];
   const solvedCount = currentIndex + 1;
-  const pendingCount = Math.max(sheet.items.length - solvedCount, 0);
+  const answeredCount = sheet.items.filter((_item, index) => selectedAnswers[index]).length;
+  const pendingCount = Math.max(sheet.items.length - answeredCount, 0);
   const activeNumberRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -444,7 +458,7 @@ function StructuredMathQuizPreview({
   }, [currentIndex]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="min-h-[700px] rounded-md border border-border bg-white p-6 text-foreground">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -475,7 +489,12 @@ function StructuredMathQuizPreview({
             <div className="rounded-md border border-border bg-muted/25 p-4 text-[15px] font-semibold leading-7">
               <MathText text={item.prompt} />
             </div>
-            <StructuredMathChoices item={item} variant="quiz" />
+            <StructuredMathChoices
+              item={item}
+              variant="quiz"
+              selectedAnswer={selectedAnswers[currentIndex] ?? null}
+              onSelectAnswer={(answer) => onSelectAnswer(currentIndex, answer)}
+            />
             <div className="mt-auto flex items-center justify-between gap-3 pt-5">
               <button
                 type="button"
@@ -501,26 +520,68 @@ function StructuredMathQuizPreview({
       </div>
 
       <aside className="flex h-[700px] min-h-0 flex-col rounded-md border border-border bg-white p-4">
-        <h3 className="shrink-0 text-sm font-bold">문항 네비게이터</h3>
-        <div className="mt-3 shrink-0 border-t border-border pt-3 text-xs text-muted-foreground">
-          <p>진행: {solvedCount} / {sheet.items.length} 문항</p>
-          <p className="mt-1">남은 문항: {pendingCount}개</p>
+        <div className="shrink-0 rounded-md border border-border bg-muted/20 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-bold">답안표</span>
+            <span className="rounded bg-foreground px-2 py-0.5 text-xs font-bold text-background">
+              {solvedCount} / {sheet.items.length}
+            </span>
+          </div>
+          <p className="mt-2 text-xs font-medium text-muted-foreground">
+            입력 {answeredCount} · 미입력 {pendingCount}
+          </p>
         </div>
-        <div className="mt-4 grid min-h-0 flex-1 grid-cols-5 content-start gap-2 overflow-y-auto pr-1 lg:grid-cols-3">
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="grid grid-cols-[52px_74px_72px] items-center border-b border-border px-2 pb-2 text-[11px] font-bold text-muted-foreground">
+            <span>문항</span>
+            <span className="text-center">선택 답</span>
+            <span className="text-right">상태</span>
+          </div>
           {sheet.items.map((navItem, i) => {
             const active = i === currentIndex;
+            const selectedAnswer = selectedAnswers[i];
             return (
               <button
                 key={i}
                 ref={active ? activeNumberRef : null}
                 type="button"
                 onClick={() => onChangeQuizIndex(i)}
-                className={`h-10 rounded-md border text-sm font-bold ${
-                  active ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                className={`mt-2 grid min-h-12 w-full grid-cols-[52px_74px_72px] items-center rounded-md border px-2 text-left text-sm ${
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : selectedAnswer
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
                 }`}
                 aria-label={`${navItem.questionNumber ?? i + 1}번 문항으로 이동`}
               >
-                {navItem.questionNumber ?? i + 1}
+                <span className="font-bold">{navItem.questionNumber ?? i + 1}</span>
+                <span className="flex justify-center">
+                  {selectedAnswer ? (
+                    <span
+                      className={`inline-flex h-7 min-w-9 items-center justify-center rounded border px-2 text-sm font-bold ${
+                        active
+                          ? "border-white/55 bg-transparent text-primary-foreground"
+                          : "border-emerald-300 bg-transparent text-emerald-800"
+                      }`}
+                    >
+                      {selectedAnswer}
+                    </span>
+                  ) : (
+                    <span className={active ? "font-bold text-primary-foreground/75" : "font-semibold text-muted-foreground/70"}>-</span>
+                  )}
+                </span>
+                <span
+                  className={`justify-self-end text-[11px] font-bold ${
+                    active
+                      ? "text-primary-foreground/85"
+                      : selectedAnswer
+                        ? "text-emerald-700"
+                        : "text-muted-foreground"
+                  }`}
+                >
+                  {selectedAnswer ? "입력" : "미입력"}
+                </span>
               </button>
             );
           })}
@@ -578,9 +639,13 @@ function StructuredMathFigure({
 function StructuredMathChoices({
   item,
   variant,
+  selectedAnswer,
+  onSelectAnswer,
 }: {
   item: StructuredMathSheet["items"][number];
   variant: PreviewMode;
+  selectedAnswer?: string | null;
+  onSelectAnswer?: (answer: string) => void;
 }) {
   if (item.choices.length === 0) return null;
 
@@ -589,14 +654,32 @@ function StructuredMathChoices({
       {item.choices.map((choice, choiceIndex) => {
         const mark = CHOICE_MARKS[choiceIndex] ?? `${choiceIndex + 1}.`;
         const isAnswer = isStructuredMathAnswer(item.answer, mark, choiceIndex);
+        const isSelected = selectedAnswer === mark;
+        const itemClassName =
+          variant === "quiz"
+            ? isSelected
+              ? "flex cursor-pointer gap-2 rounded border-2 border-foreground bg-background px-2 py-2 font-semibold text-foreground shadow-sm"
+              : "flex cursor-pointer gap-2 rounded border-2 border-transparent px-2 py-2 hover:border-border hover:bg-accent/50"
+            : isAnswer
+              ? "flex gap-2 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-800"
+              : "flex gap-2 px-2 py-1";
         return (
           <li
             key={choiceIndex}
-            className={
-              isAnswer
-                ? "flex gap-2 rounded border border-emerald-300 bg-emerald-50 px-2 py-1 font-medium text-emerald-800"
-                : "flex gap-2 px-2 py-1"
+            role={variant === "quiz" ? "button" : undefined}
+            tabIndex={variant === "quiz" ? 0 : undefined}
+            onClick={variant === "quiz" ? () => onSelectAnswer?.(mark) : undefined}
+            onKeyDown={
+              variant === "quiz"
+                ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelectAnswer?.(mark);
+                    }
+                  }
+                : undefined
             }
+            className={itemClassName}
           >
             <span className="shrink-0">{mark}</span>
             <MathText text={choice} />
