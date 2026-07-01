@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Bot, Download, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, Download, KeyRound, Languages, ListTree, Loader2, Mic, MicOff, Newspaper, Paperclip, Send, Settings2, SlidersHorizontal, Sparkles, Square, Trash2, Upload, Volume2, WandSparkles, X } from "lucide-react";
 import * as XLSX from "xlsx-js-style";
 import { agentChatApi } from "@/entities/agent/api/agentChatApi";
 import type { ChatTurn, ChunkAnalysisResponse } from "@/entities/agent/api/agentChatApi";
@@ -50,6 +50,55 @@ type ChunkAnalysisState = {
   data?: ChunkAnalysisResponse;
   error?: string;
 };
+
+type ResponseLengthPreset = "1-3" | "3-4" | "4-5" | "unlimited";
+
+const RESPONSE_LENGTH_PRESETS: {
+  value: ResponseLengthPreset;
+  label: string;
+  shortLabel: string;
+  instruction: string;
+}[] = [
+  {
+    value: "1-3",
+    label: "1-3문장",
+    shortLabel: "1-3",
+    instruction:
+      "Override any previous reply length rule: keep each character reply to 1 to 3 short sentences. No lists or long paragraphs unless the learner explicitly asks.",
+  },
+  {
+    value: "3-4",
+    label: "3-4문장",
+    shortLabel: "3-4",
+    instruction:
+      "Override any previous reply length rule: keep each character reply to 3 to 4 short sentences. Avoid lists unless the learner explicitly asks.",
+  },
+  {
+    value: "4-5",
+    label: "4-5문장",
+    shortLabel: "4-5",
+    instruction:
+      "Override any previous reply length rule: keep each character reply to 4 to 5 short sentences. Avoid overly long paragraphs.",
+  },
+  {
+    value: "unlimited",
+    label: "무제한",
+    shortLabel: "∞",
+    instruction:
+      "Override any previous reply length rule: there is no fixed sentence limit. Still keep the reply natural and avoid unnecessary filler.",
+  },
+];
+
+const CONVERSATION_QUALITY_INSTRUCTION =
+  "Highest priority conversation rule: answer the learner's latest message directly and specifically before doing anything else. If the learner asks your name, say your name. If they ask a direct question, answer that question. Only use a generic greeting on the first turn when the learner has not asked a specific question. Do not suggest what the learner can say unless they ask for help, seem stuck, or click a suggestion/help feature. Stay in character as the friend, not as a teacher.";
+
+function isResponseLengthPreset(value: string | null): value is ResponseLengthPreset {
+  return RESPONSE_LENGTH_PRESETS.some((preset) => preset.value === value);
+}
+
+function getResponseLengthInstruction(value: ResponseLengthPreset) {
+  return RESPONSE_LENGTH_PRESETS.find((preset) => preset.value === value)?.instruction ?? RESPONSE_LENGTH_PRESETS[0].instruction;
+}
 
 type SpeechRecognitionResultEventLike = {
   results: {
@@ -137,6 +186,13 @@ function getExpressionSource(message: ChatMessage) {
   if (message.translatedLabel === "English" && message.translatedText?.trim()) return message.translatedText.trim();
   if (message.text.trim()) return message.text.trim();
   return message.sourceText?.trim() ?? "";
+}
+
+function getChunkAnalysisSource(message: ChatMessage) {
+  if (message.translatedLabel === "English" && message.translatedText?.trim()) return message.translatedText.trim();
+  if (message.sourceLabel === "English" && message.sourceText?.trim()) return message.sourceText.trim();
+  if (message.text.trim() && !hasKorean(message.text)) return message.text.trim();
+  return "";
 }
 
 function getExpressionSuggestions(feedback: ExpressionFeedback | null): string[] {
@@ -397,6 +453,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
   const [expressionDraft, setExpressionDraft] = useState("");
   const [expressionListening, setExpressionListening] = useState(false);
   const [autoSpeak, setAutoSpeak] = useState(false);
+  const [responseLength, setResponseLength] = useState<ResponseLengthPreset>("1-3");
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [inputListening, setInputListening] = useState(false);
   const [inputTranscribing, setInputTranscribing] = useState(false);
@@ -469,9 +526,11 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     const storedAutoKoEn = window.localStorage.getItem("agent-chat:auto-ko-en");
     const storedMicMuted = window.localStorage.getItem("agent-chat:mic-muted");
     const storedAutoSpeak = window.localStorage.getItem("agent-chat:auto-speak");
+    const storedResponseLength = window.localStorage.getItem("agent-chat:response-length");
     if (storedAutoKoEn !== null) setAutoKoEn(storedAutoKoEn === "true");
     if (storedMicMuted !== null) setMicMuted(storedMicMuted === "true");
     if (storedAutoSpeak !== null) setAutoSpeak(storedAutoSpeak === "true");
+    if (isResponseLengthPreset(storedResponseLength)) setResponseLength(storedResponseLength);
   }, []);
 
   useEffect(() => {
@@ -615,12 +674,37 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     window.localStorage.setItem("agent-chat:auto-speak", String(enabled));
   };
 
+  const buildEffectiveInstructions = (
+    instructionsValue: AgentInstructions = instr,
+    lengthValue: ResponseLengthPreset = responseLength
+  ) => {
+    const parts = [
+      agent?.systemPrompt?.trim(),
+      composeInstructions(instructionsValue),
+      CONVERSATION_QUALITY_INSTRUCTION,
+      getResponseLengthInstruction(lengthValue),
+    ]
+      .filter((part): part is string => Boolean(part?.trim()));
+    return parts.join("\n\n");
+  };
+
   const buildRealtimeInstructions = (override: string) => {
-    const base = override.trim() || agent?.systemPrompt || "";
+    const base = override.trim() || buildEffectiveInstructions();
     if (!autoKoEn) return base;
     return (
       base +
       " When the learner speaks Korean, understand it as Korean input for English practice: translate their meaning into natural English internally, show or use the English phrasing, and respond in English unless they explicitly ask otherwise."
+    );
+  };
+
+  const syncRealtimeInstructions = (instructionsText: string) => {
+    const dataChannel = dataChannelRef.current;
+    if (voiceStatus !== "connected" || dataChannel?.readyState !== "open") return;
+    dataChannel.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { type: "realtime", instructions: buildRealtimeInstructions(instructionsText) },
+      })
     );
   };
 
@@ -633,15 +717,18 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
       window.localStorage.removeItem(`agent-chat:instructions:${agentId}`);
     }
 
-    const dataChannel = dataChannelRef.current;
-    if (voiceStatus === "connected" && dataChannel?.readyState === "open") {
-      dataChannel.send(
-        JSON.stringify({
-          type: "session.update",
-          session: { type: "realtime", instructions: buildRealtimeInstructions(composed) },
-        })
-      );
+    if (voiceStatus === "connected") {
+      syncRealtimeInstructions(buildEffectiveInstructions(value, responseLength));
       toast.success("실시간 세션에 새 지침을 반영했습니다.");
+    }
+  };
+
+  const updateResponseLength = (value: ResponseLengthPreset) => {
+    setResponseLength(value);
+    window.localStorage.setItem("agent-chat:response-length", value);
+    if (voiceStatus === "connected") {
+      syncRealtimeInstructions(buildEffectiveInstructions(instr, value));
+      toast.success("응답 길이를 실시간 세션에 반영했습니다.");
     }
   };
 
@@ -888,7 +975,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     try {
       const { text } = await agentChatApi.suggestReply({
         agentId: agent?.id,
-        instructions: composeInstructions(instr) || undefined,
+        instructions: buildEffectiveInstructions() || undefined,
         lastAgentMessage: pickText(lastAgent) || undefined,
         lastLearnerMessage: pickText(lastLearner) || undefined,
         recentHistory: recentHistory || undefined,
@@ -1048,7 +1135,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     ]);
 
     try {
-      await agentChatApi.streamMessage({ agentId: agent.id, message: modelText, instructions: composeInstructions(instr) || undefined, history }, (delta) => {
+      await agentChatApi.streamMessage({ agentId: agent.id, message: modelText, instructions: buildEffectiveInstructions() || undefined, history }, (delta) => {
         responseText += delta;
         setMessages((current) =>
           current.map((item) =>
@@ -1179,7 +1266,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
 
     setVoiceStatus("connecting");
     try {
-      const tokenResponse = await agentChatApi.createRealtimeClientSecret(agent.id, autoKoEnOverride, composeInstructions(instr) || undefined);
+      const tokenResponse = await agentChatApi.createRealtimeClientSecret(agent.id, autoKoEnOverride, buildEffectiveInstructions() || undefined);
       const clientSecret = extractClientSecret(tokenResponse.raw);
       if (!clientSecret) throw new Error("Realtime client secret이 응답에 없습니다.");
 
@@ -1428,6 +1515,40 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
     void requestExpressionFeedbackForText(expressionDraft);
   };
 
+  const responseLengthControl = (compact = false) => (
+    <div
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background p-1 ${
+        compact ? "h-8" : "h-8"
+      }`}
+      title="AI 친구 답변의 기본 문장 수"
+    >
+      <span className="inline-flex items-center gap-1 px-1.5 text-xs font-semibold text-muted-foreground">
+        <SlidersHorizontal className="h-3.5 w-3.5 text-primary" />
+        {!compact && "응답 길이"}
+      </span>
+      <div className="flex items-center gap-1">
+        {RESPONSE_LENGTH_PRESETS.map((preset) => {
+          const active = responseLength === preset.value;
+          return (
+            <button
+              key={preset.value}
+              type="button"
+              onClick={() => updateResponseLength(preset.value)}
+              aria-pressed={active}
+              className={`inline-flex h-6 min-w-8 items-center justify-center rounded px-1.5 text-[11px] font-bold transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              }`}
+            >
+              {compact ? preset.shortLabel : preset.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   if (!agent) {
     return (
       <main className="min-h-[calc(100vh-3.5rem)] bg-muted/25">
@@ -1488,6 +1609,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
               {suggestingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" />}
               추천 답변
             </button>
+            {responseLengthControl(true)}
             <button
               type="button"
               onClick={toggleRealtimeSession}
@@ -1550,6 +1672,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
               const isLearner = message.role === "learner";
               const isTyping = !isLearner && message.streaming && !message.text.trim() && !message.sourceText;
               const expressionSource = getExpressionSource(message);
+              const chunkSource = getChunkAnalysisSource(message);
 
               return (
                 <div key={message.id} className={`flex ${isLearner ? "justify-end" : "justify-start"}`}>
@@ -1606,6 +1729,25 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                         >
                           <WandSparkles className="h-3.5 w-3.5" />
                           표현
+                        </button>
+                      )}
+                      {chunkSource && (
+                        <button
+                          type="button"
+                          onClick={() => void requestChunkAnalysis(message.id, chunkSource)}
+                          disabled={chunkAnalysis[message.id]?.loading}
+                          className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold disabled:opacity-60 ${
+                            isLearner
+                              ? "bg-primary-foreground/10 text-primary-foreground/85"
+                              : "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {chunkAnalysis[message.id]?.loading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ListTree className="h-3.5 w-3.5" />
+                          )}
+                          {chunkAnalysis[message.id]?.loading ? "분석 중" : "청크"}
                         </button>
                       )}
                     </div>
@@ -1771,6 +1913,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
             </button>
 
             <div className="flex flex-wrap items-center gap-2">
+              {responseLengthControl()}
               <label className="inline-flex h-8 items-center gap-2 rounded-md border border-border px-2.5 text-xs font-semibold text-muted-foreground">
                 <Languages className="h-3.5 w-3.5 text-primary" />
                 자동 번역
@@ -1883,6 +2026,8 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                 const isLearner = message.role === "learner";
                 const isTyping =
                   !isLearner && message.streaming && !message.text.trim() && !message.sourceText;
+                const expressionSource = getExpressionSource(message);
+                const chunkSource = getChunkAnalysisSource(message);
 
                 return (
                   <div
@@ -1936,10 +2081,10 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                             <WandSparkles className="h-3.5 w-3.5" />
                             자연스러운 표현
                           </button>
-                          {getExpressionSource(message).trim() && (
+                          {expressionSource && (
                             <button
                               type="button"
-                              onClick={() => void speakMessage(message.id, getExpressionSource(message))}
+                              onClick={() => void speakMessage(message.id, expressionSource)}
                               className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary-foreground/10 px-2 text-xs font-semibold text-primary-foreground/85 transition-colors hover:bg-primary-foreground/20"
                             >
                               {speakingMessageId === message.id ? (
@@ -1955,14 +2100,34 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                               )}
                             </button>
                           )}
+                          {chunkSource && (
+                            <button
+                              type="button"
+                              onClick={() => void requestChunkAnalysis(message.id, chunkSource)}
+                              disabled={chunkAnalysis[message.id]?.loading}
+                              className="inline-flex h-7 items-center gap-1.5 rounded-md bg-primary-foreground/10 px-2 text-xs font-semibold text-primary-foreground/85 transition-colors hover:bg-primary-foreground/20 disabled:opacity-60"
+                            >
+                              {chunkAnalysis[message.id]?.loading ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  분석 중
+                                </>
+                              ) : (
+                                <>
+                                  <ListTree className="h-3.5 w-3.5" />
+                                  청크 분석
+                                </>
+                              )}
+                            </button>
+                          )}
                         </div>
                       )}
-                      {!isLearner && !message.streaming && (message.sourceText ?? message.text).trim() && (
+                      {!isLearner && !message.streaming && chunkSource && (
                         <div className="mt-3 border-t border-border pt-2">
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() => void speakMessage(message.id, (message.sourceText ?? message.text).trim())}
+                              onClick={() => void speakMessage(message.id, chunkSource)}
                               className="inline-flex h-7 items-center gap-1.5 rounded-md bg-muted px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                             >
                               {speakingMessageId === message.id ? (
@@ -1979,9 +2144,7 @@ export function AgentChatClient({ agentId, variant = "desktop" }: { agentId: str
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                void requestChunkAnalysis(message.id, (message.sourceText ?? message.text).trim())
-                              }
+                              onClick={() => void requestChunkAnalysis(message.id, chunkSource)}
                               disabled={chunkAnalysis[message.id]?.loading}
                               className="inline-flex h-7 items-center gap-1.5 rounded-md bg-muted px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
                             >
